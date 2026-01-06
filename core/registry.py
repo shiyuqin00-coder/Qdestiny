@@ -28,7 +28,7 @@ class ServiceRegistry:
             'cpu_usage': 0,
             'memory_usage': 0
         }
-        
+        print("🔧 Initializing Service Registry")
         # 启动调度器
         scheduler.start()
     
@@ -40,7 +40,7 @@ class ServiceRegistry:
         try:
             # 动态导入模块
             module = importlib.import_module(module_path)
-            
+            print("testing module import:", module)
             # 获取模块中注册的服务
             registered = get_registered_services()
             
@@ -49,7 +49,8 @@ class ServiceRegistry:
             for name, info in registered.items():
                 if info['module'] == module_path:
                     module_services[name] = info
-            
+            print("注册进去的方法:", module_services.keys())
+            print("注册进去的方法信息:", module_services.values())
             return module_services
             
         except ImportError as e:
@@ -90,6 +91,7 @@ class ServiceRegistry:
             service_name - 服务名称
             service_info - 服务信息（来自装饰器）
         """
+        print("注册服务:", service_name)
         with self.lock:
             if service_name in self.services:
                 return False  # 服务已存在
@@ -133,7 +135,6 @@ class ServiceRegistry:
             
             # 获取服务类
             service_class = self.services[service_name]['class']
-            
             # 创建实例
             instance = service_class(**(config or {}))
             self.instances[service_name] = instance
@@ -155,9 +156,9 @@ class ServiceRegistry:
                 # 创建服务实例（如果不存在）
                 if service_name not in self.instances:
                     self.create_service_instance(service_name, config)
-                
                 instance = self.instances[service_name]
                 service_info = self.services[service_name]
+                print("Starting service:", service_info)
                 
                 # 启动后台任务
                 background_tasks = service_info.get('background_tasks', [])
@@ -169,6 +170,13 @@ class ServiceRegistry:
                 scheduled_tasks = service_info.get('scheduled_tasks', [])
                 for task in scheduled_tasks:
                     self._start_scheduled_task(service_name, task, instance)
+                
+                # 启动测试任务
+                test_tasks = service_info.get('test_tasks', [])
+                for task in test_tasks:
+                    if task.get('immediate', True):
+                        print("Starting test task:", task)
+                        self._start_test_task(service_name, task, instance)
                 
                 # 标记服务为运行中
                 self.running_services[service_name] = {
@@ -218,7 +226,34 @@ class ServiceRegistry:
                 'name': task_name,
                 'thread': thread
             })
-    
+
+    def _start_test_task(self, service_name: str, task_info: Dict, instance: Any):
+        """启动测试任务"""
+        task_name = task_info['name']
+        task_func = task_info['function']
+        
+        # 创建并启动线程
+        def task_wrapper():
+            try:
+                # 绑定实例并执行
+                task_func(instance)
+            except Exception as e:
+                print(f"Test task '{service_name}.{task_name}' error: {e}")
+        
+        thread = threading.Thread(
+            target=task_wrapper,
+            daemon=True,
+            name=f"TEST-{service_name}-{task_name}"
+        )
+        thread.start()
+        
+        # 记录运行中的测试任务
+        if service_name in self.running_services:
+            self.running_services[service_name]['test_tasks'].append({
+                'name': task_name,
+                'thread': thread
+            })
+
     def _start_scheduled_task(self, service_name: str, task_info: Dict, instance: Any):
         """启动定时任务"""
         task_name = task_info['name']

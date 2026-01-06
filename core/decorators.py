@@ -17,35 +17,6 @@ class ServiceMeta:
 # 全局元信息存储
 _meta = ServiceMeta()
 
-def TEST(name: str = None, description: str = ""):
-    """
-    测试任务装饰器
-    使用示例:
-        @TEST(name="my_test", description="我的测试任务")
-        def my_test_task():
-            pass
-    """
-    def decorator(func: Callable):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            return func(*args, **kwargs)
-        
-        test_name = name or func.__name__
-        
-        # 检查是否已有同名测试任务
-        if test_name in _meta.test_tasks:
-            raise ValueError(f"Test task '{test_name}' already registered")
-        
-        # 存储测试任务信息
-        _meta.test_tasks[test_name] = {
-            'function': wrapper,
-            'name': test_name,
-            'description': description,
-            'module': func.__module__,
-        }
-        
-        return wrapper
-    return decorator
 def SERVICE(name: str = None, description: str = ""):
     """
     服务类装饰器
@@ -69,6 +40,7 @@ def SERVICE(name: str = None, description: str = ""):
             'module': cls.__module__,
             'background_tasks': [],
             'scheduled_tasks': [],
+            'test_tasks': []
         }
         
         # 扫描类中的任务装饰器
@@ -92,8 +64,39 @@ def SERVICE(name: str = None, description: str = ""):
                     'function': attr,
                     **task_info
                 })
+            # 检查是否是测试任务
+            elif hasattr(attr, '_is_test_task'):
+                task_info = getattr(attr, '_task_info', {})
+                _meta.registered_services[service_name]['test_tasks'].append({
+                    'name': attr_name,
+                    'function': attr,
+                    **task_info
+                })
         
         return cls
+    return decorator
+
+def TEST(name: str = None, description: str = ""):
+    print("🔧 Initializing Test Decorator")
+    """
+    测试任务装饰器
+    使用示例:
+        @TEST(name="my_test", description="我的测试任务")
+        def my_test_task():
+            pass
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        
+        wrapper._is_test_task = True
+        wrapper._task_info = {
+            'name': name or func.__name__,
+            'immediate': True,
+            'type': 'test'
+        }
+        return wrapper
     return decorator
 
 def BACKGROUND(name: str = None, auto_start: bool = True):

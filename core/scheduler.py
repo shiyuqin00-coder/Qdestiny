@@ -26,6 +26,7 @@ class TaskScheduler:
         # 事件回调
         self.on_task_scheduled = None
         self.on_task_executed = None
+        print("🔧 Initializing Task Scheduler")
     
     def add_task(
         self,

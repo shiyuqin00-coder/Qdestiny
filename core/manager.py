@@ -14,6 +14,7 @@ class ServiceManager:
         self.start_time = time.time()
         self.monitor_interval = 60  # 监控间隔（秒）
         self.last_monitor_time = 0
+        print("🔧 Initializing Service Manager")
         
     def auto_discover_services(self, services_dir: str = "services") -> List[str]:
         """
@@ -37,10 +38,13 @@ class ServiceManager:
                 continue
             
             module_name = f"services.{py_file.stem}"
+            print("Discovering service in module:", module_name)
             try:
                 services = registry.load_service_from_module(module_name)
                 
                 for service_name, service_info in services.items():
+                    print("注册的服务名称:", service_name)
+                    print("注册的服务信息:", service_info)
                     if registry.register_service(service_name, service_info):
                         discovered.append(service_name)
                         print(f"Discovered service: {service_name}")
@@ -66,7 +70,6 @@ class ServiceManager:
                     config = yaml.safe_load(f) or {}
             except Exception as e:
                 print(f"Warning: Failed to load config file: {e}")
-        
         return registry.start_service(service_name, config)
     
     def monitor_resources(self):

@@ -48,7 +48,7 @@ def main():
     
     # 解析参数
     args = parser.parse_args()
-    
+
     if not args.command:
         parser.print_help()
         return
@@ -89,10 +89,11 @@ def start_service(service_name, config_file=None):
         # 尝试自动发现服务
         if service_name not in registry.services:
             discovered = manager.auto_discover_services()
+            print("🔍 Auto-discovered services:", discovered)
             if service_name not in discovered:
                 print(f"❌ Service '{service_name}' not found")
-            return
-        discover_services = [service_name]
+                return
+        discover_services = [service_name]   
     for _service_name in discover_services:
         # 启动服务
         success = manager.start_service_with_config(_service_name, config_file)

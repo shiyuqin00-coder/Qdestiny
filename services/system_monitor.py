@@ -40,7 +40,6 @@ class SystemMonitor:
     def daily_report(self):
         """每日报告"""
         print("📊 Generating daily system report...")
-        
         # 这里可以生成报告文件
         report_file = self.log_dir / f"report_{datetime.now():%Y%m%d}.txt"
         
@@ -62,8 +61,3 @@ class SystemMonitor:
         memory = psutil.virtual_memory()
         
         print(f"⏰ Hourly check - CPU: {cpu}%, Memory: {memory.percent}%")
-
-# from core.decorators import TEST
-# @TEST(name="test", description="测试服务")
-# def test():
-#     print("任务启动成功")
