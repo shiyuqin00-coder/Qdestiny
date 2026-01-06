@@ -8,6 +8,7 @@ import time
 class ServiceMeta:
     """服务元信息存储"""
     def __init__(self):
+        self.test_tasks = {}            # 测试任务
         self.background_tasks = {}      # 后台任务
         self.scheduled_tasks = {}       # 定时任务
         self.registered_services = {}   # 已注册服务
@@ -16,6 +17,35 @@ class ServiceMeta:
 # 全局元信息存储
 _meta = ServiceMeta()
 
+def TEST(name: str = None, description: str = ""):
+    """
+    测试任务装饰器
+    使用示例:
+        @TEST(name="my_test", description="我的测试任务")
+        def my_test_task():
+            pass
+    """
+    def decorator(func: Callable):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        
+        test_name = name or func.__name__
+        
+        # 检查是否已有同名测试任务
+        if test_name in _meta.test_tasks:
+            raise ValueError(f"Test task '{test_name}' already registered")
+        
+        # 存储测试任务信息
+        _meta.test_tasks[test_name] = {
+            'function': wrapper,
+            'name': test_name,
+            'description': description,
+            'module': func.__module__,
+        }
+        
+        return wrapper
+    return decorator
 def SERVICE(name: str = None, description: str = ""):
     """
     服务类装饰器
