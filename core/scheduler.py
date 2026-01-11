@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Callable, Any, Optional
 from queue import Queue
 import re
-
+from utils.log import log
 class TaskScheduler:
     """
     轻量级任务调度器
@@ -26,7 +26,7 @@ class TaskScheduler:
         # 事件回调
         self.on_task_scheduled = None
         self.on_task_executed = None
-        print("🔧 Initializing Task Scheduler")
+        log.info("🔧 Initializing Task Scheduler")
     
     def add_task(
         self,
@@ -170,7 +170,7 @@ class TaskScheduler:
                     heapq.heappush(self.task_queue, (next_run.timestamp(), task_id, task))
                     
         except Exception as e:
-            print(f"Task {task_id} execution error: {e}")
+            log.info(f"Task {task_id} execution error: {e}")
     
     def remove_task(self, task_id: str):
         """移除任务"""
@@ -212,7 +212,7 @@ class TaskScheduler:
     
     def _scheduler_loop(self):
         """调度器主循环"""
-        print("Task scheduler started (low CPU mode)")
+        log.info("Task scheduler started (low CPU mode)")
         
         while self.running:
             try:
@@ -249,7 +249,7 @@ class TaskScheduler:
                     pass  # 超时继续
                     
             except Exception as e:
-                print(f"Scheduler error: {e}")
+                log.info(f"Scheduler error: {e}")
                 time.sleep(1)
     
     def get_next_task_time(self) -> Optional[datetime]:

@@ -3,7 +3,7 @@ import psutil
 import os
 from typing import Dict, List, Optional
 from .registry import registry
-
+from utils.log import log
 class ServiceManager:
     """
     服务管理器
@@ -14,7 +14,7 @@ class ServiceManager:
         self.start_time = time.time()
         self.monitor_interval = 60  # 监控间隔（秒）
         self.last_monitor_time = 0
-        print("🔧 Initializing Service Manager")
+        log.info("🔧 Initializing Service Manager")
         
     def auto_discover_services(self, services_dir: str = "services") -> List[str]:
         """
@@ -29,7 +29,7 @@ class ServiceManager:
         dir_path = Path(services_dir)
         
         if not dir_path.exists():
-            print(f"Service directory '{services_dir}' not found")
+            log.info(f"Service directory '{services_dir}' not found")
             return discovered
         
         # 扫描所有Python文件
@@ -38,19 +38,18 @@ class ServiceManager:
                 continue
             
             module_name = f"services.{py_file.stem}"
-            print("Discovering service in module:", module_name)
             try:
                 services = registry.load_service_from_module(module_name)
                 
                 for service_name, service_info in services.items():
-                    print("注册的服务名称:", service_name)
-                    print("注册的服务信息:", service_info)
+                    log.info(f"注册的服务名称: {service_name}")
+                    log.info(f"注册的服务信息: {service_info}")
                     if registry.register_service(service_name, service_info):
                         discovered.append(service_name)
-                        print(f"Discovered service: {service_name}")
+                        log.info(f"Discovered service: {service_name}")
                 
             except Exception as e:
-                print(f"Failed to discover service in {py_file}: {e}")
+                log.error(f"Failed to discover service in {py_file}: {e}")
         
         return discovered
     
@@ -69,7 +68,7 @@ class ServiceManager:
                 with open(config_file, 'r', encoding='utf-8') as f:
                     config = yaml.safe_load(f) or {}
             except Exception as e:
-                print(f"Warning: Failed to load config file: {e}")
+                log.info(f"Warning: Failed to load config file: {e}")
         return registry.start_service(service_name, config)
     
     def monitor_resources(self):
@@ -97,10 +96,10 @@ class ServiceManager:
             
             # 低资源模式：如果CPU使用率很低，可以打印日志
             if cpu_percent < 1 and self.last_monitor_time % 300 < 5:  # 每5分钟打印一次
-                print(f"📊 Framework status: CPU={cpu_percent}%, Memory={memory_mb:.1f}MB")
+                log.info(f"📊 Framework status: CPU={cpu_percent}%, Memory={memory_mb:.1f}MB")
                 
         except Exception as e:
-            print(f"Resource monitoring error: {e}")
+            log.error(f"Resource monitoring error: {e}")
     
     def get_service_info(self, service_name: str) -> Optional[Dict]:
         """获取服务详细信息"""
@@ -129,17 +128,17 @@ class ServiceManager:
     
     def graceful_shutdown(self):
         """优雅关闭"""
-        print("\n🔴 Shutting down service framework...")
+        log.info("\n🔴 Shutting down service framework...")
         
         # 停止所有服务
         for service_name in list(registry.running_services.keys()):
-            print(f"  Stopping {service_name}...")
+            log.info(f"  Stopping {service_name}...")
             registry.stop_service(service_name)
         
         # 清理注册器
         registry.cleanup()
         
-        print("✅ Service framework stopped")
+        log.info("✅ Service framework stopped")
 
 
 # 全局管理器实例

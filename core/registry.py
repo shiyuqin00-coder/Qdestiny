@@ -7,7 +7,7 @@ import time
 
 from .decorators import get_registered_services, validate_scheduled_config
 from .scheduler import scheduler
-
+from utils.log import log
 class ServiceRegistry:
     """
     服务注册管理器
@@ -29,7 +29,7 @@ class ServiceRegistry:
             'cpu_usage': 0,
             'memory_usage': 0
         }
-        print("🔧 Initializing Service Registry")
+        log.info("🔧 Initializing Service Registry")
         # 启动调度器
         scheduler.start()
     
@@ -41,7 +41,6 @@ class ServiceRegistry:
         try:
             # 动态导入模块
             module = importlib.import_module(module_path)
-            print("testing module import:", module)
             # 获取模块中注册的服务
             registered = get_registered_services()
             
@@ -50,8 +49,8 @@ class ServiceRegistry:
             for name, info in registered.items():
                 if info['module'] == module_path:
                     module_services[name] = info
-            print("注册进去的方法:", module_services.keys())
-            print("注册进去的方法信息:", module_services.values())
+            log.info(f"注册进去的方法:{module_services.keys()}")
+            log.info(f"注册进去的方法信息:{module_services.values()}")
             return module_services
             
         except ImportError as e:
@@ -92,7 +91,7 @@ class ServiceRegistry:
             service_name - 服务名称
             service_info - 服务信息（来自装饰器）
         """
-        print("注册服务:", service_name)
+        log.info(f"注册服务:{service_name}")
         with self.lock:
             if service_name in self.services:
                 return False  # 服务已存在
@@ -113,13 +112,13 @@ class ServiceRegistry:
         required_fields = ['class', 'name', 'module']
         for field in required_fields:
             if field not in service_info:
-                print(f"Service validation failed: missing field '{field}'")
+                log.info(f"Service validation failed: missing field '{field}'")
                 return False
         
         # 验证定时任务配置
         for task in service_info.get('scheduled_tasks', []):
             if not validate_scheduled_config(task):
-                print(f"Service validation failed: invalid scheduled task config for {task.get('name')}")
+                log.info(f"Service validation failed: invalid scheduled task config for {task.get('name')}")
                 return False
         
         return True
@@ -150,7 +149,7 @@ class ServiceRegistry:
         """
         with self.lock:
             if service_name in self.running_services:
-                print(f"Service '{service_name}' is already running")
+                log.info(f"Service '{service_name}' is already running")
                 return False
             
             try:
@@ -159,7 +158,7 @@ class ServiceRegistry:
                     self.create_service_instance(service_name, config)
                 instance = self.instances[service_name]
                 service_info = self.services[service_name]
-                print("Starting service:", service_info)
+                log.info(f"Starting service:{service_info}")
                 
                 # 启动后台任务
                 background_tasks = service_info.get('background_tasks', [])
@@ -176,7 +175,6 @@ class ServiceRegistry:
                 test_tasks = service_info.get('test_tasks', [])
                 for task in test_tasks:
                     if task.get('immediate', True):
-                        print("Starting test task:", task)
                         self._start_test_task(service_name, task, instance)
                 
                 # 标记服务为运行中
@@ -191,14 +189,14 @@ class ServiceRegistry:
                 self.status['background_tasks'] += len(background_tasks)
                 self.status['scheduled_tasks'] += len(scheduled_tasks)
                 
-                print(f"✅ Service '{service_name}' started successfully")
-                print(f"   - Background tasks: {len(background_tasks)}")
-                print(f"   - Scheduled tasks: {len(scheduled_tasks)}")
+                log.info(f"✅ Service '{service_name}' started successfully")
+                log.info(f"   - Background tasks: {len(background_tasks)}")
+                log.info(f"   - Scheduled tasks: {len(scheduled_tasks)}")
                 
                 return True
                 
             except Exception as e:
-                print(f"❌ Failed to start service '{service_name}': {e}")
+                log.info(f"❌ Failed to start service '{service_name}': {e}")
                 return False
     
     def _start_background_task(self, service_name: str, task_info: Dict, instance: Any):
@@ -212,7 +210,7 @@ class ServiceRegistry:
                 # 绑定实例并执行
                 task_func(instance)
             except Exception as e:
-                print(f"Background task '{service_name}.{task_name}' error: {e}")
+                log.info(f"Background task '{service_name}.{task_name}' error: {e}")
         
         thread = threading.Thread(
             target=task_wrapper,
@@ -239,7 +237,7 @@ class ServiceRegistry:
                 # 绑定实例并执行
                 task_func(instance)
             except Exception as e:
-                print(f"Test task '{service_name}.{task_name}' error: {e}")
+                log.info(f"Test task '{service_name}.{task_name}' error: {e}")
         
         thread = threading.Thread(
             target=task_wrapper,
@@ -265,7 +263,7 @@ class ServiceRegistry:
             try:
                 task_func(instance, *args, **kwargs)
             except Exception as e:
-                print(f"Scheduled task '{service_name}.{task_name}' error: {e}")
+                log.info(f"Scheduled task '{service_name}.{task_name}' error: {e}")
         
         # 添加任务到调度器
         task_id = f"{service_name}.{task_name}"
@@ -281,9 +279,9 @@ class ServiceRegistry:
         )
         
         if success:
-            print(f"   - Scheduled task '{task_name}' registered")
+            log.info(f"   - Scheduled task '{task_name}' registered")
         else:
-            print(f"   - Failed to register scheduled task '{task_name}'")
+            log.info(f"   - Failed to register scheduled task '{task_name}'")
     
     def stop_service(self, service_name: str) -> bool:
         """
@@ -292,7 +290,7 @@ class ServiceRegistry:
         """
         with self.lock:
             if service_name not in self.running_services:
-                print(f"Service '{service_name}' is not running")
+                log.info(f"Service '{service_name}' is not running")
                 return False
             
             try:
@@ -313,12 +311,12 @@ class ServiceRegistry:
                 del self.running_services[service_name]
                 self.status['running_services'] -= 1
                 
-                print(f"✅ Service '{service_name}' stopped")
+                log.info(f"✅ Service '{service_name}' stopped")
                 
                 return True
                 
             except Exception as e:
-                print(f"❌ Failed to stop service '{service_name}': {e}")
+                log.info(f"❌ Failed to stop service '{service_name}': {e}")
                 return False
     
     def get_service_status(self, service_name: str = None) -> Dict:
