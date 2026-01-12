@@ -26,7 +26,7 @@ class TaskScheduler:
         # 事件回调
         self.on_task_scheduled = None
         self.on_task_executed = None
-        log.info("🔧 Initializing Task Scheduler")
+        log.info("🔧 初始化任务调度器")
     
     def add_task(
         self,
@@ -212,8 +212,8 @@ class TaskScheduler:
     
     def _scheduler_loop(self):
         """调度器主循环"""
-        log.info("Task scheduler started (low CPU mode)")
-        
+        log.info("🔧 任务调度器已启动")
+    
         while self.running:
             try:
                 with self.lock:
@@ -249,7 +249,7 @@ class TaskScheduler:
                     pass  # 超时继续
                     
             except Exception as e:
-                log.info(f"Scheduler error: {e}")
+                log.error(f"Scheduler loop error: {e}")
                 time.sleep(1)
     
     def get_next_task_time(self) -> Optional[datetime]:

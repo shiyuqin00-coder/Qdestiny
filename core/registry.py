@@ -29,7 +29,7 @@ class ServiceRegistry:
             'cpu_usage': 0,
             'memory_usage': 0
         }
-        log.info("🔧 Initializing Service Registry")
+        log.info("🔧 初始化服务注册器")
         # 启动调度器
         scheduler.start()
     

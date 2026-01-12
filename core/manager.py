@@ -14,7 +14,7 @@ class ServiceManager:
         self.start_time = time.time()
         self.monitor_interval = 60  # 监控间隔（秒）
         self.last_monitor_time = 0
-        log.info("🔧 Initializing Service Manager")
+        log.info("🔧 初始化服务管理器")
         
     def auto_discover_services(self, services_dir: str = "services") -> List[str]:
         """
