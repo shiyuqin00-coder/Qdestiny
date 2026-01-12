@@ -1,27 +1,14 @@
-# 创建基本服务
-python manage.py create my_service --template=basic
-
-# 创建定时服务
-python manage.py create daily_report --template=scheduled
-
-# 创建事件驱动服务
-python manage.py create event_handler --template=event
-
 # 列出所有服务
 python manage.py list
 
 # 启动服务
-python manage.py start my_service
-python manage.py start  # 启动所有服务
+python manage.py start --service MyExampleService
+
+# 启动另一个服务
+python manage.py start --service AnotherService
 
 # 停止服务
-python manage.py stop my_service
+python manage.py stop --service MyExampleService
 
-# 查看状态
-python manage.py status
-
-# 重启服务
-python manage.py restart my_service
-
-# 查看所有路由
-python manage.py routes
+# 再次列出查看状态
+python manage.py list
