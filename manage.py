@@ -31,6 +31,14 @@ def main():
         success = manager.start_service(args.service)
         if not success:
             sys.exit(1)
+        
+        # 保持程序运行，等待用户输入停止
+        try:
+            input(f"Service {args.service} is running. Press Enter to stop...")
+        except KeyboardInterrupt:
+            pass
+        finally:
+            manager.stop_service(args.service)
     
     elif args.command == 'stop':
         success = manager.stop_service(args.service)
