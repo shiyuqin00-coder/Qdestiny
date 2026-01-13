@@ -9,6 +9,7 @@ class ServiceRegistry:
         self._instances: Dict[str, object] = {}
     
     def register(self, name: str, service_class: Type):
+        print(f"注册服务类:{name}")
         """注册服务类"""
         self._services[name] = service_class
     
@@ -48,10 +49,11 @@ class ServiceRegistry:
         try:
             package = importlib.import_module(package_name)
             package_path = package.__path__
-            
+            print(f"服务文件路径:{package_name}")
             for _, module_name, is_pkg in pkgutil.iter_modules(package_path):
                 if not is_pkg:
                     full_module_name = f"{package_name}.{module_name}"
+                    print(f"加载包:{full_module_name}")
                     self._load_services_from_module(full_module_name)
         except ImportError as e:
             print(f"Error loading package {package_name}: {e}")
@@ -60,10 +62,10 @@ class ServiceRegistry:
         """从模块加载服务"""
         try:
             module = importlib.import_module(module_name)
-            
+            print("加载包的基本属性(包括类，函数，变量，导入的模块和内置属性):\n")
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                
+                print(f"{attr_name}")
                 # 检查是否是类且有 _is_service 属性
                 if (isinstance(attr, type) and 
                     hasattr(attr, '_is_service') and 

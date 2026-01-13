@@ -11,26 +11,26 @@ class ServiceManager:
     def start_service(self, service_name: str):
         """启动服务"""
         if service_name in self._running_services:
-            print(f"Service {service_name} is already running")
+            print(f"服务正在运行中:{service_name}")
             return False
         
         # 获取服务类
         service_class = registry.get_service(service_name)
         if not service_class:
-            print(f"Service {service_name} not found")
+            print(f"服务未找到 {service_name}")
             return False
         
         # 创建服务实例
         instance = registry.create_instance(service_name)
         if not instance:
-            print(f"Failed to create instance of {service_name}")
+            print(f"服务实例创建失败 {service_name}")
             return False
         
         # 调用初始化方法
         if hasattr(instance, '_init'):
             try:
                 instance._init()
-                print(f"Initialized service: {service_name}")
+                print(f"调用初始化方法 {service_name}")
             except Exception as e:
                 print(f"Error initializing service {service_name}: {e}")
                 return False
