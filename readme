@@ -1,27 +1,24 @@
-# 创建基本服务
-python manage.py create my_service --template=basic
-
-# 创建定时服务
-python manage.py create daily_report --template=scheduled
-
-# 创建事件驱动服务
-python manage.py create event_handler --template=event
-
-# 列出所有服务
-python manage.py list
-
-# 启动服务
-python manage.py start my_service
-python manage.py start  # 启动所有服务
-
-# 停止服务
-python manage.py stop my_service
-
-# 查看状态
-python manage.py status
-
-# 重启服务
-python manage.py restart my_service
-
-# 查看所有路由
-python manage.py routes
+service_framework/
+├── __init__.py
+├── manage.py                    # 命令行入口
+├── core/
+│   ├── __init__.py
+│   ├── manager.py              # 服务管理器
+│   ├── registry.py             # 服务注册器
+│   ├── scheduler.py            # 调度器
+│   └── exceptions.py           # 自定义异常
+├── models/
+│   ├── __init__.py
+│   ├── service_instance.py     # 服务实例模型
+│   └── service_definition.py   # 服务定义模型
+├── utils/
+│   ├── __init__.py
+│   ├── log.py                  # 日志配置
+│   ├── config.py               # 配置加载
+│   └── discovery.py            # 服务发现（可选）
+├── storage/                    # 数据存储（可选，比如用于注册器的持久化）
+│   ├── __init__.py
+│   └── memory_store.py         # 内存存储
+└── services/                   # 示例服务或服务目录（用户自定义服务存放处）
+    ├── __init__.py
+    └── example_service.py      # 示例服务

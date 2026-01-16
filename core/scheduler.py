@@ -1,269 +1,286 @@
-import time
-import threading
-import heapq
-from datetime import datetime, timedelta
-from typing import Dict, List, Callable, Any, Optional
-from queue import Queue
-import re
+"""
+调度器模块
+"""
+from typing import Dict, Any, List, Optional, Tuple
+import random
+from datetime import datetime
+
+from models.service_definition import ServiceDefinition
+from models.service_instance import ServiceInstance
+from core.exceptions import NoAvailableNodeError, SchedulerError
 from utils.log import log
-class TaskScheduler:
+
+class SimpleScheduler:
     """
-    轻量级任务调度器
-    使用最小堆实现高效的任务调度，CPU占用极低
+    简单调度器
+    根据节点负载和资源需求选择运行节点
     """
     
     def __init__(self):
-        self.task_queue = []  # 最小堆，存储(执行时间, 任务ID, 任务)
-        self.tasks = {}       # 任务存储
-        self.task_counter = 0
-        self.lock = threading.RLock()
-        self.running = False
-        self.scheduler_thread = None
-        
-        # 用于唤醒调度器的队列
-        self.wakeup_queue = Queue()
-        
-        # 事件回调
-        self.on_task_scheduled = None
-        self.on_task_executed = None
-        log.info("🔧 初始化任务调度器")
-    
-    def add_task(
-        self,
-        task_func: Callable,
-        task_id: str,
-        interval: int = None,
-        cron: str = None,
-        at_time: str = None,
-        times: int = None,
-        immediate: bool = False,
-        args: tuple = (),
-        kwargs: dict = None
-    ):
-        """添加定时任务"""
-        with self.lock:
-            kwargs = kwargs or {}
-            
-            # 生成任务
-            task = {
-                'func': task_func,
-                'id': task_id,
-                'interval': interval,
-                'cron': cron,
-                'at_time': at_time,
-                'times': times,
-                'executed_times': 0,
-                'max_times': times,
-                'args': args,
-                'kwargs': kwargs,
-                'next_run': None
+        # 节点信息：node_id -> {attributes, resources}
+        self.nodes: Dict[str, Dict[str, Any]] = {
+            "local": {
+                "type": "local",
+                "host": "localhost",
+                "available": True,
+                "resources": {
+                    "total_cpu_cores": 8.0,
+                    "total_memory_mb": 16384,
+                    "total_disk_mb": 102400,
+                    "gpu_count": 0
+                },
+                "used_resources": {
+                    "cpu_cores": 0.0,
+                    "memory_mb": 0,
+                    "disk_mb": 0,
+                    "gpu_count": 0
+                },
+                "labels": {
+                    "os": "linux",
+                    "env": "development"
+                },
+                "last_updated": datetime.now()
             }
-            
-            # 计算第一次执行时间
-            next_run = self._calculate_next_run(task)
-            
-            if next_run:
-                task['next_run'] = next_run
-                self.tasks[task_id] = task
-                
-                # 加入堆队列
-                heapq.heappush(self.task_queue, (next_run.timestamp(), task_id, task))
-                
-                # 立即执行一次
-                if immediate:
-                    self._execute_task_immediately(task_id)
-                
-                # 触发事件
-                if self.on_task_scheduled:
-                    self.on_task_scheduled(task_id, next_run)
-                
-                return True
-            else:
-                return False
+        }
+        
+        # 节点选择策略
+        self.strategy = "random"  # random, round_robin, least_loaded
+        
+        log.info(f"调度器已初始化，节点数: {len(self.nodes)}")
     
-    def _calculate_next_run(self, task: Dict) -> Optional[datetime]:
-        """计算下一次执行时间"""
-        now = datetime.now()
+    def schedule(self, 
+                service_def: ServiceDefinition, 
+                config: Dict[str, Any] = None,
+                node_id: str = None) -> Tuple[str, Dict[str, Any]]:
+        """
+        为服务选择运行节点
         
-        if task.get('interval'):
-            # 间隔执行
-            return now + timedelta(seconds=task['interval'])
+        参数:
+            service_def: 服务定义
+            config: 服务配置
+            node_id: 指定节点（如果为None则自动选择）
         
-        elif task.get('at_time'):
-            # 每天特定时间执行
-            hour, minute = map(int, task['at_time'].split(':'))
-            next_run = datetime(now.year, now.month, now.day, hour, minute)
+        返回:
+            (node_id, node_info)
+        """
+        config = config or {}
+        
+        # 如果指定了节点，检查是否可用
+        if node_id:
+            if node_id not in self.nodes:
+                raise SchedulerError(f"节点不存在: {node_id}")
             
-            if next_run < now:
-                next_run += timedelta(days=1)
+            node_info = self.nodes[node_id]
+            if not self._check_node_available(node_info, service_def):
+                raise NoAvailableNodeError()
             
-            return next_run
-        
-        elif task.get('cron'):
-            # cron表达式执行
-            return self._cron_to_next_run(task['cron'])
-        
-        return None
-    
-    def _cron_to_next_run(self, cron: str) -> datetime:
-        """解析cron表达式并计算下次执行时间"""
-        # 简化版cron解析，支持格式: "minute hour day month weekday"
-        # 例如: "0 9 * * *" 表示每天9:00
-        parts = cron.split()
-        if len(parts) != 5:
-            raise ValueError(f"Invalid cron expression: {cron}")
-        
-        minute, hour, day, month, weekday = parts
-        now = datetime.now()
-        
-        # 简单的实现：只处理每小时/每天的情况
-        # 实际应用中可以使用croniter库
-        if minute.isdigit() and hour.isdigit():
-            target_minute = int(minute)
-            target_hour = int(hour)
+            # 更新节点资源使用
+            self._allocate_resources(node_id, service_def)
             
-            next_run = datetime(now.year, now.month, now.day, target_hour, target_minute)
-            if next_run < now:
-                next_run += timedelta(days=1)
-            
-            return next_run
+            log.info(f"调度到指定节点: {node_id}")
+            return node_id, node_info
+        
+        # 自动选择节点
+        suitable_nodes = self._find_suitable_nodes(service_def)
+        
+        if not suitable_nodes:
+            raise NoAvailableNodeError()
+        
+        # 根据策略选择节点
+        if self.strategy == "random":
+            selected_node = random.choice(suitable_nodes)
+        elif self.strategy == "round_robin":
+            selected_node = self._round_robin_select(suitable_nodes, service_def.name)
+        elif self.strategy == "least_loaded":
+            selected_node = self._least_loaded_select(suitable_nodes)
         else:
-            # 更复杂的cron表达式，这里简化处理
-            return now + timedelta(minutes=1)
+            selected_node = suitable_nodes[0]
+        
+        # 分配资源
+        self._allocate_resources(selected_node, service_def)
+        
+        node_info = self.nodes[selected_node]
+        log.info(f"调度到节点: {selected_node} (策略: {self.strategy})")
+        
+        return selected_node, node_info
     
-    def _execute_task_immediately(self, task_id: str):
-        """立即执行任务（在新线程中）"""
-        task = self.tasks.get(task_id)
-        if task:
-            threading.Thread(
-                target=self._run_task,
-                args=(task_id,),
-                daemon=True,
-                name=f"Task-{task_id}-Immediate"
-            ).start()
+    def _find_suitable_nodes(self, service_def: ServiceDefinition) -> List[str]:
+        """找到适合运行服务的节点"""
+        suitable_nodes = []
+        
+        for node_id, node_info in self.nodes.items():
+            if self._check_node_available(node_info, service_def):
+                suitable_nodes.append(node_id)
+        
+        return suitable_nodes
     
-    def _run_task(self, task_id: str):
-        """运行任务"""
-        task = self.tasks.get(task_id)
-        if not task:
+    def _check_node_available(self, node_info: Dict[str, Any], 
+                            service_def: ServiceDefinition) -> bool:
+        """检查节点是否可用并满足资源需求"""
+        if not node_info.get("available", True):
+            return False
+        
+        # 检查节点标签匹配
+        if not self._check_labels_match(node_info.get("labels", {}), 
+                                      service_def.node_labels):
+            return False
+        
+        # 检查资源是否足够
+        resources = node_info.get("resources", {})
+        used = node_info.get("used_resources", {})
+        
+        req = service_def.get_resource_requirements()
+        
+        # 检查CPU
+        available_cpu = resources.get("total_cpu_cores", 0) - used.get("cpu_cores", 0)
+        if available_cpu < req["cpu_cores"]:
+            return False
+        
+        # 检查内存
+        available_memory = resources.get("total_memory_mb", 0) - used.get("memory_mb", 0)
+        if available_memory < req["memory_mb"]:
+            return False
+        
+        # 检查磁盘
+        available_disk = resources.get("total_disk_mb", 0) - used.get("disk_mb", 0)
+        if available_disk < req["disk_mb"]:
+            return False
+        
+        # 检查GPU
+        available_gpu = resources.get("gpu_count", 0) - used.get("gpu_count", 0)
+        if available_gpu < req["gpu_count"]:
+            return False
+        
+        return True
+    
+    def _check_labels_match(self, node_labels: Dict[str, str], 
+                          required_labels: Dict[str, str]) -> bool:
+        """检查节点标签是否匹配服务要求"""
+        if not required_labels:
+            return True
+        
+        for key, value in required_labels.items():
+            if key not in node_labels or node_labels[key] != value:
+                return False
+        
+        return True
+    
+    def _allocate_resources(self, node_id: str, service_def: ServiceDefinition):
+        """分配节点资源"""
+        node_info = self.nodes[node_id]
+        used = node_info.setdefault("used_resources", {})
+        req = service_def.get_resource_requirements()
+        
+        used["cpu_cores"] = used.get("cpu_cores", 0) + req["cpu_cores"]
+        used["memory_mb"] = used.get("memory_mb", 0) + req["memory_mb"]
+        used["disk_mb"] = used.get("disk_mb", 0) + req["disk_mb"]
+        used["gpu_count"] = used.get("gpu_count", 0) + req["gpu_count"]
+        
+        node_info["last_updated"] = datetime.now()
+    
+    def _release_resources(self, node_id: str, service_def: ServiceDefinition):
+        """释放节点资源"""
+        if node_id not in self.nodes:
             return
         
-        try:
-            # 执行任务
-            task['func'](*task['args'], **task['kwargs'])
-            task['executed_times'] += 1
-            
-            # 触发事件
-            if self.on_task_executed:
-                self.on_task_executed(task_id, task['executed_times'])
-            
-            # 检查执行次数限制
-            if task.get('max_times') and task['executed_times'] >= task['max_times']:
-                self.remove_task(task_id)
-                return
-            
-            # 重新调度（对于周期任务）
-            with self.lock:
-                if task_id in self.tasks and task['interval']:
-                    next_run = datetime.now() + timedelta(seconds=task['interval'])
-                    task['next_run'] = next_run
-                    heapq.heappush(self.task_queue, (next_run.timestamp(), task_id, task))
-                    
-        except Exception as e:
-            log.info(f"Task {task_id} execution error: {e}")
-    
-    def remove_task(self, task_id: str):
-        """移除任务"""
-        with self.lock:
-            if task_id in self.tasks:
-                del self.tasks[task_id]
-                # 注意：从堆中移除需要重建堆或标记删除
-                self._rebuild_heap()
-    
-    def _rebuild_heap(self):
-        """重建堆（移除已删除的任务后）"""
-        new_queue = []
-        for timestamp, task_id, task in self.task_queue:
-            if task_id in self.tasks:
-                heapq.heappush(new_queue, (timestamp, task_id, task))
-        self.task_queue = new_queue
-    
-    def start(self):
-        """启动调度器"""
-        if self.running:
-            return
+        node_info = self.nodes[node_id]
+        used = node_info.get("used_resources", {})
+        req = service_def.get_resource_requirements()
         
-        self.running = True
-        self.scheduler_thread = threading.Thread(
-            target=self._scheduler_loop,
-            daemon=True,
-            name="TaskScheduler"
-        )
-        self.scheduler_thread.start()
-    
-    def stop(self):
-        """停止调度器"""
-        self.running = False
-        # 唤醒调度器线程以退出
-        self.wakeup_queue.put(1)
+        if used:
+            used["cpu_cores"] = max(0, used.get("cpu_cores", 0) - req["cpu_cores"])
+            used["memory_mb"] = max(0, used.get("memory_mb", 0) - req["memory_mb"])
+            used["disk_mb"] = max(0, used.get("disk_mb", 0) - req["disk_mb"])
+            used["gpu_count"] = max(0, used.get("gpu_count", 0) - req["gpu_count"])
         
-        if self.scheduler_thread:
-            self.scheduler_thread.join(timeout=2)
+        node_info["last_updated"] = datetime.now()
     
-    def _scheduler_loop(self):
-        """调度器主循环"""
-        log.info("🔧 任务调度器已启动")
+    def _round_robin_select(self, nodes: List[str], service_name: str) -> str:
+        """轮询选择节点"""
+        # 简单的基于服务名称的哈希选择
+        import hashlib
+        hash_val = int(hashlib.md5(service_name.encode()).hexdigest(), 16)
+        index = hash_val % len(nodes)
+        return nodes[index]
     
-        while self.running:
-            try:
-                with self.lock:
-                    now = datetime.now()
-                    
-                    # 检查是否有需要执行的任务
-                    while self.task_queue and self.task_queue[0][0] <= now.timestamp():
-                        timestamp, task_id, task = heapq.heappop(self.task_queue)
-                        
-                        # 验证任务是否还存在
-                        if task_id not in self.tasks:
-                            continue
-                        
-                        # 执行任务（在新线程中）
-                        threading.Thread(
-                            target=self._run_task,
-                            args=(task_id,),
-                            daemon=True,
-                            name=f"Task-{task_id}"
-                        ).start()
-                
-                # 计算下一次检查时间（节省CPU的关键）
-                if self.task_queue:
-                    next_check = self.task_queue[0][0] - time.time()
-                    sleep_time = max(0.1, min(next_check, 1.0))  # 最多睡1秒
-                else:
-                    sleep_time = 1.0  # 没有任务时睡1秒
-                
-                # 等待，可被唤醒
-                try:
-                    self.wakeup_queue.get(timeout=sleep_time)
-                except:
-                    pass  # 超时继续
-                    
-            except Exception as e:
-                log.error(f"Scheduler loop error: {e}")
-                time.sleep(1)
+    def _least_loaded_select(self, nodes: List[str]) -> str:
+        """选择负载最低的节点"""
+        min_load = float('inf')
+        selected_node = nodes[0]
+        
+        for node_id in nodes:
+            node_info = self.nodes[node_id]
+            resources = node_info.get("resources", {})
+            used = node_info.get("used_resources", {})
+            
+            # 计算CPU利用率作为负载指标
+            total_cpu = resources.get("total_cpu_cores", 1)
+            used_cpu = used.get("cpu_cores", 0)
+            cpu_load = used_cpu / total_cpu if total_cpu > 0 else 0
+            
+            if cpu_load < min_load:
+                min_load = cpu_load
+                selected_node = node_id
+        
+        return selected_node
     
-    def get_next_task_time(self) -> Optional[datetime]:
-        """获取下一个任务的执行时间"""
-        with self.lock:
-            if self.task_queue:
-                timestamp, _, _ = self.task_queue[0]
-                return datetime.fromtimestamp(timestamp)
-        return None
+    def add_node(self, node_id: str, attributes: Dict[str, Any]):
+        """添加节点"""
+        if node_id in self.nodes:
+            log.warning(f"节点 {node_id} 已存在，将被覆盖")
+        
+        self.nodes[node_id] = {
+            **attributes,
+            "used_resources": {
+                "cpu_cores": 0.0,
+                "memory_mb": 0,
+                "disk_mb": 0,
+                "gpu_count": 0
+            },
+            "last_updated": datetime.now()
+        }
+        
+        log.info(f"添加节点: {node_id}")
     
-    def get_task_count(self) -> int:
-        """获取任务数量"""
-        return len(self.tasks)
-
-
-# 全局调度器实例
-scheduler = TaskScheduler()
+    def remove_node(self, node_id: str):
+        """移除节点"""
+        if node_id in self.nodes:
+            del self.nodes[node_id]
+            log.info(f"移除节点: {node_id}")
+        else:
+            log.warning(f"尝试移除不存在的节点: {node_id}")
+    
+    def get_node_status(self, node_id: str) -> Optional[Dict[str, Any]]:
+        """获取节点状态"""
+        node_info = self.nodes.get(node_id)
+        if not node_info:
+            return None
+        
+        resources = node_info.get("resources", {})
+        used = node_info.get("used_resources", {})
+        
+        return {
+            "node_id": node_id,
+            "available": node_info.get("available", True),
+            "labels": node_info.get("labels", {}),
+            "resources": {
+                "total": resources,
+                "used": used,
+                "available": {
+                    "cpu_cores": resources.get("total_cpu_cores", 0) - used.get("cpu_cores", 0),
+                    "memory_mb": resources.get("total_memory_mb", 0) - used.get("memory_mb", 0),
+                    "disk_mb": resources.get("total_disk_mb", 0) - used.get("disk_mb", 0),
+                    "gpu_count": resources.get("gpu_count", 0) - used.get("gpu_count", 0)
+                }
+            },
+            "last_updated": node_info.get("last_updated")
+        }
+    
+    def set_strategy(self, strategy: str):
+        """设置调度策略"""
+        valid_strategies = ["random", "round_robin", "least_loaded"]
+        if strategy not in valid_strategies:
+            raise ValueError(f"无效的调度策略，可选: {valid_strategies}")
+        
+        self.strategy = strategy
+        log.info(f"设置调度策略为: {strategy}")
