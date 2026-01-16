@@ -65,7 +65,6 @@ class ServiceRegistry:
             print("加载包的基本属性(包括类，函数，变量，导入的模块和内置属性):\n")
             for attr_name in dir(module):
                 attr = getattr(module, attr_name)
-                print(f"{attr_name}")
                 # 检查是否是类且有 _is_service 属性
                 if (isinstance(attr, type) and 
                     hasattr(attr, '_is_service') and 
