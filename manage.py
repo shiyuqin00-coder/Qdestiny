@@ -19,11 +19,11 @@ def create_parser():
         description='服务管理框架 - 本地服务部署和管理工具',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-示例:
-  %(prog)s start my-service --config ./config.yaml
-  %(prog)s stop my-service --instance-id inst_abc123
-  %(prog)s list --status running
-  %(prog)s status inst_abc123
+            示例:
+            %(prog)s start my-service --config ./config.yaml
+            %(prog)s stop my-service --instance-id inst_abc123
+            %(prog)s list --status running
+            %(prog)s status inst_abc123
         """
     )
     
