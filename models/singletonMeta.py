@@ -1,0 +1,17 @@
+# 自定义元类（线程安全）
+import threading
+
+class SingletonMeta(type):
+    _instances = {}
+    _lock = threading.Lock()
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+# 基类：所有需要单例的类继承它
+class SingletonBase(metaclass=SingletonMeta):
+    pass

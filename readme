@@ -1,14 +1,33 @@
+# 创建基本服务
+python manage.py create my_service --template=basic
+
+# 创建定时服务
+python manage.py create daily_report --template=scheduled
+
+# 创建事件驱动服务
+python manage.py create event_handler --template=event
+
 # 列出所有服务
 python manage.py list
 
 # 启动服务
-python manage.py start --service MyExampleService
-
-# 启动另一个服务
-python manage.py start --service AnotherService
+python manage.py start my_service
+python manage.py start  # 启动所有服务
 
 # 停止服务
-python manage.py stop --service MyExampleService
+python manage.py stop my_service
 
-# 再次列出查看状态
-python manage.py list
+# 查看状态
+python manage.py status
+
+# 重启服务
+python manage.py restart my_service
+
+# 查看所有路由
+python manage.py routes
+
+
+manage启动框架，进行管理器，注册器和调度器的初始化
+管理器，负责查看服务状态，开启服务，停止服务，查询所有服务，解析config
+注册器，负责将服务注册进服务表，将服务删除服务表，查看服务表中的所有服务
+调度器，负责执行任务，启动调度器loop进行任务监听，一旦有新的任务进入队列，则执行该任务
