@@ -1,33 +1,243 @@
-# 创建基本服务
-python manage.py create my_service --template=basic
+# Qdestiny 服务框架
 
-# 创建定时服务
-python manage.py create daily_report --template=scheduled
+一个轻量级的 Python 服务框架，支持后台任务、定时任务和跨进程任务管理。
 
-# 创建事件驱动服务
-python manage.py create event_handler --template=event
+## 环境配置
 
+### 1. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+依赖包括：
+- `psutil` - 系统监控
+- `redis` - Redis 客户端
+- `pyyaml` - YAML 配置解析
+
+### 2. 安装并启动 Redis
+
+**Windows:**
+```bash
+# 使用 Chocolatey 安装
+choco install redis-64
+
+# 启动 Redis 服务
+redis-server
+```
+
+**Linux/Mac:**
+```bash
+# Ubuntu/Debian
+sudo apt-get install redis-server
+sudo service redis-server start
+
+# Mac (使用 Homebrew)
+brew install redis
+brew services start redis
+```
+
+验证 Redis 是否运行：
+```bash
+redis-cli ping
+# 应返回: PONG
+```
+
+### 3. 配置 Redis 连接（可选）
+
+默认使用本地 Redis（localhost:6379），如需修改，请设置环境变量：
+
+```bash
+# Windows PowerShell
+$env:REDIS_HOST = "192.168.1.100"
+$env:REDIS_PORT = "6379"
+$env:REDIS_PASSWORD = "your_password"
+
+# Linux/Mac
+export REDIS_HOST=192.168.1.100
+export REDIS_PORT=6379
+export REDIS_PASSWORD=your_password
+```
+
+或在 `config.py` 中直接修改配置。
+
+---
+
+## 运行步骤
+
+### 方式一：本地模式（单进程）
+
+适用于简单场景，不支持跨进程添加任务。
+
+```bash
+# 1. 启动框架
+python manage.py run
+
+# 2. 自动启动指定服务
+python manage.py run --services system_monitor
+
+# 3. 在另一个终端操作（同一进程内）
+python manage.py start system_monitor
+python manage.py stop system_monitor
+python manage.py status
+```
+
+### 方式二：Redis 模式（推荐）
+
+支持跨进程动态添加任务，适合生产环境。
+
+```bash
+# 终端 1: 启动框架（保持运行）
+python manage.py run
+
+# 终端 2: 通过 Redis 发送命令（跨进程）
+
+# 启动服务
+python manage.py redis start system_monitor
+
+# 停止服务
+python manage.py redis stop system_monitor
+
+# 查看框架状态
+python manage.py redis status
+
+# 清空任务队列
+python manage.py redis clear
+```
+
+---
+
+## 命令参考
+
+### 基础命令
+
+```bash
 # 列出所有服务
 python manage.py list
 
-# 启动服务
-python manage.py start my_service
+# 发现服务
+python manage.py discover
+
+# 启动服务（本地模式）
+python manage.py start <service_name>
 python manage.py start  # 启动所有服务
 
-# 停止服务
-python manage.py stop my_service
+# 停止服务（本地模式）
+python manage.py stop <service_name>
 
 # 查看状态
 python manage.py status
+python manage.py status <service_name>
 
 # 重启服务
-python manage.py restart my_service
+python manage.py restart <service_name>
+```
 
-# 查看所有路由
-python manage.py routes
+### Redis 命令（跨进程）
 
+```bash
+# 启动服务
+python manage.py redis start <service_name>
+python manage.py redis start <service_name> --config config.yaml
 
-manage启动框架，进行管理器，注册器和调度器的初始化
-管理器，负责查看服务状态，开启服务，停止服务，查询所有服务，解析config
-注册器，负责将服务注册进服务表，将服务删除服务表，查看服务表中的所有服务
-调度器，负责执行任务，启动调度器loop进行任务监听，一旦有新的任务进入队列，则执行该任务
+# 停止服务
+python manage.py redis stop <service_name>
+
+# 添加动态定时任务
+python manage.py redis task <service_name> --name <task_method> --interval <seconds>
+python manage.py redis task <service_name> --name <task_method> --at-time "09:00"
+python manage.py redis task <service_name> --name <task_method> --cron "0 9 * * *"
+
+# 查看框架状态
+python manage.py redis status
+
+# 清空任务队列
+python manage.py redis clear
+```
+
+### 动态任务示例
+
+假设 `system_monitor` 服务有一个 `custom_check` 方法：
+
+```bash
+# 每 60 秒执行一次
+python manage.py redis task system_monitor --name custom_check --interval 60
+
+# 每天 9:00 执行
+python manage.py redis task system_monitor --name custom_check --at-time "09:00"
+
+# 立即执行一次，之后每小时执行
+python manage.py redis task system_monitor --name custom_check --interval 3600 --immediate
+
+# 只执行 5 次
+python manage.py redis task system_monitor --name custom_check --interval 60 --times 5
+```
+
+---
+
+## 架构说明
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        Qdestiny 框架                         │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │   管理器      │  │   注册器      │  │   调度器      │      │
+│  │  (Manager)   │  │  (Registry)  │  │  (Scheduler) │      │
+│  ├──────────────┤  ├──────────────┤  ├──────────────┤      │
+│  │ • 服务发现    │  │ • 服务注册    │  │ • 任务调度    │      │
+│  │ • 启动/停止   │  │ • 实例管理    │  │ • 定时执行    │      │
+│  │ • 状态查询    │  │ • 动态任务    │  │ • 周期任务    │      │
+│  │ • 资源监控    │  │ • 服务状态    │  │ • 任务队列    │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+├─────────────────────────────────────────────────────────────┤
+│                    Redis 任务队列（可选）                      │
+│              支持跨进程发布和订阅任务消息                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 组件职责
+
+- **管理器 (Manager)**: 负责服务发现、启动/停止服务、资源监控
+- **注册器 (Registry)**: 管理服务注册表、创建实例、支持动态任务添加
+- **调度器 (Scheduler)**: 使用最小堆实现高效的任务调度，支持间隔、定时、cron 表达式
+- **Redis 队列**: 实现跨进程通信，支持在框架运行时从其他进程添加任务
+
+---
+
+## 创建服务
+
+参考 `services/system_monitor.py` 创建自定义服务：
+
+```python
+from core.decorators import SERVICE, BACKGROUND, SCHEDULED
+
+@SERVICE(name="my_service", description="我的服务")
+class MyService:
+    def __init__(self, config=None):
+        self.config = config or {}
+        self.running = True
+    
+    @BACKGROUND(name="worker", auto_start=True)
+    def background_worker(self):
+        """后台任务"""
+        while self.running:
+            # 执行任务
+            time.sleep(5)
+    
+    @SCHEDULED(interval=300)
+    def periodic_task(self):
+        """每5分钟执行一次"""
+        print("执行定时任务")
+    
+    @SCHEDULED(at_time="09:00")
+    def daily_task(self):
+        """每天9点执行"""
+        print("执行每日任务")
+    
+    def custom_check(self):
+        """可通过 Redis 动态添加为定时任务的方法"""
+        print("自定义检查")
+```
+
+将服务文件保存到 `services/` 目录，框架会自动发现。

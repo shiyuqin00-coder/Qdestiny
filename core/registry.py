@@ -355,6 +355,96 @@ class ServiceRegistry:
                 'status': self.status.copy()
             }
     
+    def add_dynamic_task(self, service_name: str, task_name: str, 
+                         interval: int = None, cron: str = None, 
+                         at_time: str = None, times: int = None,
+                         immediate: bool = False) -> bool:
+        """
+        动态添加任务到运行中的服务
+        
+        参数:
+            service_name: 目标服务名称
+            task_name: 任务名称
+            interval: 间隔秒数
+            cron: cron表达式
+            at_time: 每天特定时间 (HH:MM)
+            times: 最大执行次数
+            immediate: 是否立即执行一次
+        """
+        with self.lock:
+            if service_name not in self.running_services:
+                log.error(f"服务 '{service_name}' 未运行，无法添加任务")
+                return False
+            
+            if service_name not in self.instances:
+                log.error(f"服务 '{service_name}' 实例不存在")
+                return False
+            
+            instance = self.instances[service_name]
+            
+            # 检查任务方法是否存在
+            if not hasattr(instance, task_name):
+                log.error(f"任务方法 '{task_name}' 不存在于服务 '{service_name}'")
+                return False
+            
+            task_func = getattr(instance, task_name)
+            
+            # 验证是否是可调用的方法
+            if not callable(task_func):
+                log.error(f"'{task_name}' 不是可调用的方法")
+                return False
+            
+            try:
+                # 创建任务包装器
+                def task_wrapper(*args, **kwargs):
+                    try:
+                        task_func(*args, **kwargs)
+                    except Exception as e:
+                        log.error(f"动态任务 '{service_name}.{task_name}' 执行错误: {e}")
+                
+                # 添加到调度器
+                task_id = f"{service_name}.{task_name}.dynamic"
+                
+                success = scheduler.add_task(
+                    task_func=task_wrapper,
+                    task_id=task_id,
+                    interval=interval,
+                    cron=cron,
+                    at_time=at_time,
+                    times=times,
+                    immediate=immediate
+                )
+                
+                if success:
+                    log.info(f"✅ 动态任务 '{task_name}' 已添加到服务 '{service_name}'")
+                    # 更新服务状态
+                    if service_name in self.running_services:
+                        if 'dynamic_tasks' not in self.running_services[service_name]:
+                            self.running_services[service_name]['dynamic_tasks'] = []
+                        self.running_services[service_name]['dynamic_tasks'].append(task_id)
+                        self.status['scheduled_tasks'] += 1
+                    return True
+                else:
+                    log.error(f"❌ 添加动态任务 '{task_name}' 失败")
+                    return False
+                    
+            except Exception as e:
+                log.error(f"添加动态任务时出错: {e}")
+                return False
+    
+    def remove_dynamic_task(self, service_name: str, task_name: str) -> bool:
+        """
+        移除动态任务
+        
+        参数:
+            service_name: 服务名称
+            task_name: 任务名称
+        """
+        task_id = f"{service_name}.{task_name}.dynamic"
+        scheduler.remove_task(task_id)
+        log.info(f"🗑️  动态任务 '{task_name}' 已从服务 '{service_name}' 移除")
+        return True
+    
     def cleanup(self):
         """清理资源"""
         # 停止所有服务
