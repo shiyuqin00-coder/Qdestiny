@@ -1,269 +1,170 @@
+"""
+定时任务调度器
+基于最小堆实现，支持 delay + interval + repeat
+"""
 import time
-import threading
 import heapq
-from datetime import datetime, timedelta
-from typing import Dict, List, Callable, Any, Optional
-from queue import Queue
-import re
-from utils.log import log
+import threading
+import logging
+
+log = logging.getLogger('Qdestiny')
+
+
 class TaskScheduler:
-    """
-    轻量级任务调度器
-    使用最小堆实现高效的任务调度，CPU占用极低
-    """
-    
     def __init__(self):
-        self.task_queue = []  # 最小堆，存储(执行时间, 任务ID, 任务)
-        self.tasks = {}       # 任务存储
-        self.task_counter = 0
-        self.lock = threading.RLock()
-        self.running = False
-        self.scheduler_thread = None
-        
-        # 用于唤醒调度器的队列
-        self.wakeup_queue = Queue()
-        
-        # 事件回调
-        self.on_task_scheduled = None
-        self.on_task_executed = None
-        log.info("🔧 初始化任务调度器")
-    
-    def add_task(
-        self,
-        task_func: Callable,
-        task_id: str,
-        interval: int = None,
-        cron: str = None,
-        at_time: str = None,
-        times: int = None,
-        immediate: bool = False,
-        args: tuple = (),
-        kwargs: dict = None
-    ):
-        """添加定时任务"""
-        with self.lock:
-            kwargs = kwargs or {}
-            
-            # 生成任务
-            task = {
-                'func': task_func,
-                'id': task_id,
-                'interval': interval,
-                'cron': cron,
-                'at_time': at_time,
-                'times': times,
-                'executed_times': 0,
-                'max_times': times,
-                'args': args,
-                'kwargs': kwargs,
-                'next_run': None
-            }
-            
-            # 计算第一次执行时间
-            next_run = self._calculate_next_run(task)
-            
-            if next_run:
-                task['next_run'] = next_run
-                self.tasks[task_id] = task
-                
-                # 加入堆队列
-                heapq.heappush(self.task_queue, (next_run.timestamp(), task_id, task))
-                
-                # 立即执行一次
-                if immediate:
-                    self._execute_task_immediately(task_id)
-                
-                # 触发事件
-                if self.on_task_scheduled:
-                    self.on_task_scheduled(task_id, next_run)
-                
-                return True
-            else:
-                return False
-    
-    def _calculate_next_run(self, task: Dict) -> Optional[datetime]:
-        """计算下一次执行时间"""
-        now = datetime.now()
-        
-        if task.get('interval'):
-            # 间隔执行
-            return now + timedelta(seconds=task['interval'])
-        
-        elif task.get('at_time'):
-            # 每天特定时间执行
-            hour, minute = map(int, task['at_time'].split(':'))
-            next_run = datetime(now.year, now.month, now.day, hour, minute)
-            
-            if next_run < now:
-                next_run += timedelta(days=1)
-            
-            return next_run
-        
-        elif task.get('cron'):
-            # cron表达式执行
-            return self._cron_to_next_run(task['cron'])
-        
-        return None
-    
-    def _cron_to_next_run(self, cron: str) -> datetime:
-        """解析cron表达式并计算下次执行时间"""
-        # 简化版cron解析，支持格式: "minute hour day month weekday"
-        # 例如: "0 9 * * *" 表示每天9:00
-        parts = cron.split()
-        if len(parts) != 5:
-            raise ValueError(f"Invalid cron expression: {cron}")
-        
-        minute, hour, day, month, weekday = parts
-        now = datetime.now()
-        
-        # 简单的实现：只处理每小时/每天的情况
-        # 实际应用中可以使用croniter库
-        if minute.isdigit() and hour.isdigit():
-            target_minute = int(minute)
-            target_hour = int(hour)
-            
-            next_run = datetime(now.year, now.month, now.day, target_hour, target_minute)
-            if next_run < now:
-                next_run += timedelta(days=1)
-            
-            return next_run
-        else:
-            # 更复杂的cron表达式，这里简化处理
-            return now + timedelta(minutes=1)
-    
-    def _execute_task_immediately(self, task_id: str):
-        """立即执行任务（在新线程中）"""
-        task = self.tasks.get(task_id)
-        if task:
-            threading.Thread(
-                target=self._run_task,
-                args=(task_id,),
-                daemon=True,
-                name=f"Task-{task_id}-Immediate"
-            ).start()
-    
-    def _run_task(self, task_id: str):
-        """运行任务"""
-        task = self.tasks.get(task_id)
-        if not task:
-            return
-        
-        try:
-            # 执行任务
-            task['func'](*task['args'], **task['kwargs'])
-            task['executed_times'] += 1
-            
-            # 触发事件
-            if self.on_task_executed:
-                self.on_task_executed(task_id, task['executed_times'])
-            
-            # 检查执行次数限制
-            if task.get('max_times') and task['executed_times'] >= task['max_times']:
-                self.remove_task(task_id)
-                return
-            
-            # 重新调度（对于周期任务）
-            with self.lock:
-                if task_id in self.tasks and task['interval']:
-                    next_run = datetime.now() + timedelta(seconds=task['interval'])
-                    task['next_run'] = next_run
-                    heapq.heappush(self.task_queue, (next_run.timestamp(), task_id, task))
-                    
-        except Exception as e:
-            log.info(f"Task {task_id} execution error: {e}")
-    
-    def remove_task(self, task_id: str):
-        """移除任务"""
-        with self.lock:
-            if task_id in self.tasks:
-                del self.tasks[task_id]
-                # 注意：从堆中移除需要重建堆或标记删除
-                self._rebuild_heap()
-    
-    def _rebuild_heap(self):
-        """重建堆（移除已删除的任务后）"""
-        new_queue = []
-        for timestamp, task_id, task in self.task_queue:
-            if task_id in self.tasks:
-                heapq.heappush(new_queue, (timestamp, task_id, task))
-        self.task_queue = new_queue
-    
+        self._heap = []           # (next_run_ts, counter, task_id)
+        self._tasks = {}          # task_id -> task_info
+        self._counter = 0         # 单调递增，避免堆比较 task_id
+        self._lock = threading.RLock()
+        self._wakeup = threading.Event()
+        self._running = False
+        self._thread = None
+
     def start(self):
-        """启动调度器"""
-        if self.running:
+        """启动调度器线程"""
+        if self._running:
             return
-        
-        self.running = True
-        self.scheduler_thread = threading.Thread(
-            target=self._scheduler_loop,
-            daemon=True,
-            name="TaskScheduler"
-        )
-        self.scheduler_thread.start()
-    
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True, name='Scheduler')
+        self._thread.start()
+        log.info("调度器已启动")
+
     def stop(self):
         """停止调度器"""
-        self.running = False
-        # 唤醒调度器线程以退出
-        self.wakeup_queue.put(1)
-        
-        if self.scheduler_thread:
-            self.scheduler_thread.join(timeout=2)
-    
-    def _scheduler_loop(self):
-        """调度器主循环"""
-        log.info("🔧 任务调度器已启动")
-    
-        while self.running:
-            try:
-                with self.lock:
-                    now = datetime.now()
-                    
-                    # 检查是否有需要执行的任务
-                    while self.task_queue and self.task_queue[0][0] <= now.timestamp():
-                        timestamp, task_id, task = heapq.heappop(self.task_queue)
-                        
-                        # 验证任务是否还存在
-                        if task_id not in self.tasks:
-                            continue
-                        
-                        # 执行任务（在新线程中）
-                        threading.Thread(
-                            target=self._run_task,
-                            args=(task_id,),
-                            daemon=True,
-                            name=f"Task-{task_id}"
-                        ).start()
-                
-                # 计算下一次检查时间（节省CPU的关键）
-                if self.task_queue:
-                    next_check = self.task_queue[0][0] - time.time()
-                    sleep_time = max(0.1, min(next_check, 1.0))  # 最多睡1秒
+        self._running = False
+        self._wakeup.set()
+        if self._thread:
+            self._thread.join(timeout=3)
+        log.info("调度器已停止")
+
+    def add_task(self, task_id: str, func, delay: float = 0,
+                 interval: float = 0, repeat='once') -> bool:
+        """
+        添加定时任务
+        Args:
+            task_id: 唯一任务标识
+            func: 要调用的函数（无参数）
+            delay: 首次执行延迟秒数
+            interval: 重复间隔秒数
+            repeat: 'once' / 'forever' / 正整数
+        """
+        with self._lock:
+            if task_id in self._tasks:
+                log.warning(f"任务 '{task_id}' 已存在，跳过添加")
+                return False
+
+            max_times = None
+            if repeat == 'once':
+                max_times = 1
+            elif repeat == 'forever':
+                max_times = None
+            elif isinstance(repeat, int) and repeat >= 1:
+                max_times = repeat
+            else:
+                log.error(f"无效的 repeat 值: {repeat}")
+                return False
+
+            next_run = time.time() + delay
+            self._counter += 1
+            task_info = {
+                'id': task_id,
+                'func': func,
+                'interval': interval,
+                'max_times': max_times,
+                'executed': 0,
+                'executing': threading.Event(),  # set=空闲, clear=执行中
+            }
+            task_info['executing'].set()
+            self._tasks[task_id] = task_info
+            heapq.heappush(self._heap, (next_run, self._counter, task_id))
+            self._wakeup.set()
+            log.info(f"任务 '{task_id}' 已添加到调度器 (delay={delay}s, interval={interval}s, repeat={repeat})")
+            return True
+
+    def remove_task(self, task_id: str) -> bool:
+        """移除任务（标记删除，下次弹出时跳过）"""
+        with self._lock:
+            if task_id in self._tasks:
+                del self._tasks[task_id]
+                log.info(f"任务 '{task_id}' 已从调度器移除")
+                return True
+            return False
+
+    def get_task_info(self, task_id: str) -> dict:
+        """获取任务信息"""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return {}
+            return {
+                'id': task['id'],
+                'interval': task['interval'],
+                'max_times': task['max_times'],
+                'executed': task['executed'],
+                'is_executing': not task['executing'].is_set(),
+            }
+
+    def _loop(self):
+        """调度主循环"""
+        while self._running:
+            self._wakeup.clear()
+            with self._lock:
+                now = time.time()
+                while self._heap and self._heap[0][0] <= now:
+                    ts, cnt, task_id = heapq.heappop(self._heap)
+                    task = self._tasks.get(task_id)
+                    if not task:
+                        continue  # 已被删除
+                    if not task['executing'].is_set():
+                        # 上次执行尚未完成，跳过并重新入堆
+                        log.warning(f"任务 '{task_id}' 上次执行未完成，跳过本次")
+                        self._counter += 1
+                        next_run = now + max(task['interval'], 1)
+                        heapq.heappush(self._heap, (next_run, self._counter, task_id))
+                        continue
+                    # 启动执行线程
+                    threading.Thread(
+                        target=self._run_task, args=(task_id,),
+                        daemon=True, name=f'Task-{task_id}'
+                    ).start()
+
+            # 计算等待时间
+            with self._lock:
+                if self._heap:
+                    wait = max(0.05, self._heap[0][0] - time.time())
                 else:
-                    sleep_time = 1.0  # 没有任务时睡1秒
-                
-                # 等待，可被唤醒
-                try:
-                    self.wakeup_queue.get(timeout=sleep_time)
-                except:
-                    pass  # 超时继续
-                    
-            except Exception as e:
-                log.error(f"Scheduler loop error: {e}")
-                time.sleep(1)
-    
-    def get_next_task_time(self) -> Optional[datetime]:
-        """获取下一个任务的执行时间"""
-        with self.lock:
-            if self.task_queue:
-                timestamp, _, _ = self.task_queue[0]
-                return datetime.fromtimestamp(timestamp)
-        return None
-    
-    def get_task_count(self) -> int:
-        """获取任务数量"""
-        return len(self.tasks)
+                    wait = None  # 无限等待直到新任务加入
+            self._wakeup.wait(timeout=wait)
 
+    def _run_task(self, task_id: str):
+        """在线程中执行任务"""
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return
+            task['executing'].clear()  # 标记为执行中
 
-# 全局调度器实例
-scheduler = TaskScheduler()
+        try:
+            task['func']()
+        except Exception as e:
+            log.error(f"任务 '{task_id}' 执行出错: {e}")
+
+        with self._lock:
+            task = self._tasks.get(task_id)
+            if not task:
+                return
+            task['executing'].set()  # 标记为空闲
+            task['executed'] += 1
+
+            # 检查是否需要继续调度
+            if task['max_times'] is not None and task['executed'] >= task['max_times']:
+                del self._tasks[task_id]
+                log.info(f"任务 '{task_id}' 已完成全部 {task['executed']} 次执行，自动移除")
+                return
+
+            # 重新入堆
+            if task['interval'] > 0:
+                self._counter += 1
+                next_run = time.time() + task['interval']
+                heapq.heappush(self._heap, (next_run, self._counter, task_id))
+                self._wakeup.set()

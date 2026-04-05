@@ -1,0 +1,5 @@
+# system_monitor 服务配置
+name: system_monitor
+type: hotkey
+hotkey:
+  keys: "a+d"       # 按下 a+d 组合键时触发

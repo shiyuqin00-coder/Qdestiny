@@ -1,0 +1,7 @@
+# test 服务配置
+name: test
+type: scheduled
+schedule:
+  delay: 5          # 首次延迟5秒执行
+  interval: 10      # 之后每10秒执行一次
+  repeat: 3         # 共执行3次后自动移除
