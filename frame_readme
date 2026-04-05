@@ -64,8 +64,10 @@ Qdestiny/
 │   └── service_runner.py        # 服务生命周期管理
 │
 ├── services/                    # 用户服务目录
-│   ├── <name>.py                # 服务文件（必须含 start() 函数）
-│   └── <name>.yaml              # 对应的配置文件
+│   └── <name>.py                # 服务文件（必须含 start() 函数）
+│
+├── configs/                     # 服务配置目录
+│   └── <name>.yaml              # 对应的 YAML 配置文件
 │
 ├── utils/
 │   └── log.py                   # 日志模块说明
@@ -212,10 +214,10 @@ Qdestiny/
 
 **核心函数**：
 
-- `load_service_config(name)` — 读取 `services/<name>.yaml`，返回 dict
+- `load_service_config(name)` — 读取 `configs/<name>.yaml`，返回 dict
 - `validate_config(config)` — 验证配置合法性，返回 `(bool, error_msg)`
 - `service_file_exists(name)` — 检查 `services/<name>.py` 是否存在
-- `list_service_files()` — 扫描 services/ 目录，列出所有 .py 文件及是否有对应 .yaml
+- `list_service_files()` — 扫描 services/ 目录列出所有 .py 文件，并检查 configs/ 目录下是否有对应 .yaml
 
 **验证规则**：
 
@@ -350,7 +352,7 @@ while running:
 
 2. 检查 services/<name>.py 是否存在
 
-3. 加载 services/<name>.yaml → validate_config()
+3. 加载 configs/<name>.yaml → validate_config()
    ├─ 文件不存在 → 报错
    └─ 验证失败 → 报错
 

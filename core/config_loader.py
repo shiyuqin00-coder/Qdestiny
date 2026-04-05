@@ -7,11 +7,12 @@ from typing import Tuple
 
 
 SERVICES_DIR = Path(__file__).parent.parent / 'services'
+CONFIGS_DIR = Path(__file__).parent.parent / 'configs'
 
 
 def load_service_config(service_name: str) -> dict:
     """加载服务配置文件"""
-    config_path = SERVICES_DIR / f'{service_name}.yaml'
+    config_path = CONFIGS_DIR / f'{service_name}.yaml'
     if not config_path.exists():
         raise FileNotFoundError(f"配置文件不存在: {config_path}")
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -81,6 +82,6 @@ def list_service_files() -> list:
         if py_file.name.startswith('__'):
             continue
         name = py_file.stem
-        has_config = (SERVICES_DIR / f'{name}.yaml').exists()
+        has_config = (CONFIGS_DIR / f'{name}.yaml').exists()
         result.append({'name': name, 'has_config': has_config})
     return result

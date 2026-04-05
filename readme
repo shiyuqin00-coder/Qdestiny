@@ -45,7 +45,7 @@ python manage.py run
 python manage.py create test
 ```
 
-这会启动 `services/test.py` 中定义的服务。框架会根据 `services/test.yaml` 的配置决定如何运行它。
+这会启动 `services/test.py` 中定义的服务。框架会根据 `configs/test.yaml` 的配置决定如何运行它。
 
 ### 4. 查看运行状态
 
@@ -93,7 +93,7 @@ Qdestiny 支持两种服务类型，通过 YAML 配置文件指定。
 
 按照设定的时间规则自动运行服务。
 
-**配置示例** (`services/test.yaml`)：
+**配置示例** (`configs/test.yaml`)：
 
 ```yaml
 name: test
@@ -118,7 +118,7 @@ schedule:
 
 按下指定的组合键时触发运行，适合需要手动触发的操作。
 
-**配置示例** (`services/system_monitor.yaml`)：
+**配置示例** (`configs/system_monitor.yaml`)：
 
 ```yaml
 name: system_monitor
@@ -166,7 +166,7 @@ def start():
 
 在 `services/` 目录下创建同名的 YAML 文件：
 
-**定时任务配置** (`services/my_task.yaml`)：
+**定时任务配置** (`configs/my_task.yaml`)：
 
 ```yaml
 name: my_task
@@ -177,7 +177,7 @@ schedule:
   repeat: "forever"   # 永久运行
 ```
 
-**热键触发配置** (`services/my_task.yaml`)：
+**热键触发配置** (`configs/my_task.yaml`)：
 
 ```yaml
 name: my_task
@@ -212,7 +212,7 @@ def start():
 ```
 
 ```yaml
-# services/cleanup.yaml
+# configs/cleanup.yaml
 name: cleanup
 type: scheduled
 schedule:
@@ -232,7 +232,7 @@ def start():
 ```
 
 ```yaml
-# services/screenshot.yaml
+# configs/screenshot.yaml
 name: screenshot
 type: hotkey
 hotkey:
