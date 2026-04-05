@@ -1,8 +1,11 @@
-# Qdestiny 服务框架
+# Qdestiny 服务框架 - 使用手册
 
-一个轻量级的 Python 服务框架，支持后台任务、定时任务和跨进程任务管理。
+Qdestiny 是一个轻量级的 Python 后台服务框架，可以将 Python 脚本挂在后台运行。
+支持**定时任务**和**全局热键触发**两种运行模式，无需任何外部数据库，开箱即用。
 
-## 环境配置
+---
+
+## 快速开始
 
 ### 1. 安装依赖
 
@@ -10,234 +13,267 @@
 pip install -r requirements.txt
 ```
 
-依赖包括：
-- `psutil` - 系统监控
-- `redis` - Redis 客户端
-- `pyyaml` - YAML 配置解析
+依赖说明：
 
-### 2. 安装并启动 Redis
+| 包名 | 用途 |
+|------|------|
+| `psutil` | 进程检测与系统信息 |
+| `pynput` | 全局热键监听（热键类型服务需要） |
+| `pyyaml` | 读取服务配置文件 |
 
-**Windows:**
-```bash
-# 使用 Chocolatey 安装
-choco install redis-64
+### 2. 启动框架
 
-# 启动 Redis 服务
-redis-server
-```
-
-**Linux/Mac:**
-```bash
-# Ubuntu/Debian
-sudo apt-get install redis-server
-sudo service redis-server start
-
-# Mac (使用 Homebrew)
-brew install redis
-brew services start redis
-```
-
-验证 Redis 是否运行：
-```bash
-redis-cli ping
-# 应返回: PONG
-```
-
-### 3. 配置 Redis 连接（可选）
-
-默认使用本地 Redis（localhost:6379），如需修改，请设置环境变量：
+打开一个终端，在项目根目录执行：
 
 ```bash
-# Windows PowerShell
-$env:REDIS_HOST = "192.168.1.100"
-$env:REDIS_PORT = "6379"
-$env:REDIS_PASSWORD = "your_password"
-
-# Linux/Mac
-export REDIS_HOST=192.168.1.100
-export REDIS_PORT=6379
-export REDIS_PASSWORD=your_password
-```
-
-或在 `config.py` 中直接修改配置。
-
----
-
-## 运行步骤
-
-### 方式一：本地模式（单进程）
-
-适用于简单场景，不支持跨进程添加任务。
-
-```bash
-# 1. 启动框架
 python manage.py run
+```
 
-# 2. 自动启动指定服务
-python manage.py run --services system_monitor
+框架启动后会常驻运行，等待接收命令。你会看到类似输出：
 
-# 3. 在另一个终端操作（同一进程内）
-python manage.py start system_monitor
-python manage.py stop system_monitor
+```
+16:34:56 [INFO] 调度器已启动
+16:34:56 [INFO] Qdestiny 框架已启动 (PID: 12345, 端口: 19527)
+16:34:56 [INFO] 按 Ctrl+C 或执行 'python manage.py exit' 退出
+```
+
+### 3. 启动一个服务
+
+打开**另一个终端**，执行：
+
+```bash
+python manage.py create test
+```
+
+这会启动 `services/test.py` 中定义的服务。框架会根据 `services/test.yaml` 的配置决定如何运行它。
+
+### 4. 查看运行状态
+
+```bash
 python manage.py status
 ```
 
-### 方式二：Redis 模式（推荐）
+输出示例：
 
-支持跨进程动态添加任务，适合生产环境。
+```
+--- 框架状态 ---
+  PID:    12345
+  端口:   19527
+  运行:   30s
 
-```bash
-# 终端 1: 启动框架（保持运行）
-python manage.py run
-
-# 终端 2: 通过 Redis 发送命令（跨进程）
-
-# 启动服务
-python manage.py redis start system_monitor
-
-# 停止服务
-python manage.py redis stop system_monitor
-
-# 查看框架状态
-python manage.py redis status
-
-# 清空任务队列
-python manage.py redis clear
+--- 服务列表 (1 个) ---
+  [RUN] test                 类型: scheduled    执行: 2次  启动于: 2026-04-05 16:35:06
 ```
 
 ---
 
 ## 命令参考
 
-### 基础命令
+所有命令都在项目根目录下执行。框架必须先通过 `run` 启动，其他命令才能使用。
 
-```bash
-# 列出所有服务
-python manage.py list
+| 命令 | 说明 | 示例 |
+|------|------|------|
+| `run` | 启动框架主进程（需保持终端运行） | `python manage.py run` |
+| `create <名称>` | 启动一个服务 | `python manage.py create test` |
+| `stop <名称>` | 停止一个运行中的服务 | `python manage.py stop test` |
+| `status` | 查看框架和所有服务的运行状态 | `python manage.py status` |
+| `list` | 列出 services/ 目录下所有可用的服务 | `python manage.py list` |
+| `remove <名称>` | 从框架中移除已注册的服务 | `python manage.py remove test` |
+| `exit` | 退出框架（会自动停止所有服务） | `python manage.py exit` |
 
-# 发现服务
-python manage.py discover
-
-# 启动服务（本地模式）
-python manage.py start <service_name>
-python manage.py start  # 启动所有服务
-
-# 停止服务（本地模式）
-python manage.py stop <service_name>
-
-# 查看状态
-python manage.py status
-python manage.py status <service_name>
-
-# 重启服务
-python manage.py restart <service_name>
-```
-
-### Redis 命令（跨进程）
-
-```bash
-# 启动服务
-python manage.py redis start <service_name>
-python manage.py redis start <service_name> --config config.yaml
-
-# 停止服务
-python manage.py redis stop <service_name>
-
-# 添加动态定时任务
-python manage.py redis task <service_name> --name <task_method> --interval <seconds>
-python manage.py redis task <service_name> --name <task_method> --at-time "09:00"
-python manage.py redis task <service_name> --name <task_method> --cron "0 9 * * *"
-
-# 查看框架状态
-python manage.py redis status
-
-# 清空任务队列
-python manage.py redis clear
-```
-
-### 动态任务示例
-
-假设 `system_monitor` 服务有一个 `custom_check` 方法：
-
-```bash
-# 每 60 秒执行一次
-python manage.py redis task system_monitor --name custom_check --interval 60
-
-# 每天 9:00 执行
-python manage.py redis task system_monitor --name custom_check --at-time "09:00"
-
-# 立即执行一次，之后每小时执行
-python manage.py redis task system_monitor --name custom_check --interval 3600 --immediate
-
-# 只执行 5 次
-python manage.py redis task system_monitor --name custom_check --interval 60 --times 5
-```
+**stop 和 remove 的区别**：`stop` 停止服务但保留注册信息（可以查到状态），`remove` 彻底从框架中删除。
 
 ---
 
-## 架构说明
+## 服务类型
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        Qdestiny 框架                         │
-├─────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │   管理器      │  │   注册器      │  │   调度器      │      │
-│  │  (Manager)   │  │  (Registry)  │  │  (Scheduler) │      │
-│  ├──────────────┤  ├──────────────┤  ├──────────────┤      │
-│  │ • 服务发现    │  │ • 服务注册    │  │ • 任务调度    │      │
-│  │ • 启动/停止   │  │ • 实例管理    │  │ • 定时执行    │      │
-│  │ • 状态查询    │  │ • 动态任务    │  │ • 周期任务    │      │
-│  │ • 资源监控    │  │ • 服务状态    │  │ • 任务队列    │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-├─────────────────────────────────────────────────────────────┤
-│                    Redis 任务队列（可选）                      │
-│              支持跨进程发布和订阅任务消息                      │
-└─────────────────────────────────────────────────────────────┘
+Qdestiny 支持两种服务类型，通过 YAML 配置文件指定。
+
+### 类型一：定时任务（scheduled）
+
+按照设定的时间规则自动运行服务。
+
+**配置示例** (`services/test.yaml`)：
+
+```yaml
+name: test
+type: scheduled
+schedule:
+  delay: 5          # 首次执行延迟（秒），0 表示立即执行
+  interval: 10      # 重复间隔（秒）
+  repeat: 3         # 运行策略（见下方说明）
 ```
 
-### 组件职责
+**repeat 运行策略**：
 
-- **管理器 (Manager)**: 负责服务发现、启动/停止服务、资源监控
-- **注册器 (Registry)**: 管理服务注册表、创建实例、支持动态任务添加
-- **调度器 (Scheduler)**: 使用最小堆实现高效的任务调度，支持间隔、定时、cron 表达式
-- **Redis 队列**: 实现跨进程通信，支持在框架运行时从其他进程添加任务
+| 值 | 含义 |
+|----|------|
+| `"once"` | 执行 1 次后自动移除 |
+| `3`（任意正整数） | 执行 3 次后自动移除 |
+| `"forever"` | 永久循环执行，直到手动 stop |
+
+**执行流程**：框架启动服务后，等待 `delay` 秒 → 执行第 1 次 → 等待 `interval` 秒 → 执行第 2 次 → ... → 达到 `repeat` 次数后自动停止。
+
+### 类型二：热键触发（hotkey）
+
+按下指定的组合键时触发运行，适合需要手动触发的操作。
+
+**配置示例** (`services/system_monitor.yaml`)：
+
+```yaml
+name: system_monitor
+type: hotkey
+hotkey:
+  keys: "a+d"       # 同时按下 a 和 d 键时触发
+```
+
+**按键格式**：用 `+` 连接多个键名。支持的键名：
+
+- 字母键：`a`, `b`, `c`, ... `z`
+- 修饰键：`ctrl`, `shift`, `alt`
+- 特殊键：`space`, `enter`, `tab`, `esc`
+
+**示例组合**：`"ctrl+shift+m"`, `"a+d"`, `"alt+1"`
+
+> 注意：热键是**全局**的，即使框架的终端窗口不在前台也能响应。
 
 ---
 
-## 创建服务
+## 创建自己的服务
 
-参考 `services/system_monitor.py` 创建自定义服务：
+创建一个服务只需要两步：
+
+### 第 1 步：编写服务文件
+
+在 `services/` 目录下创建一个 Python 文件，**必须包含 `start()` 函数**：
 
 ```python
-from core.decorators import SERVICE, BACKGROUND, SCHEDULED
+# services/my_task.py
 
-@SERVICE(name="my_service", description="我的服务")
-class MyService:
-    def __init__(self, config=None):
-        self.config = config or {}
-        self.running = True
-    
-    @BACKGROUND(name="worker", auto_start=True)
-    def background_worker(self):
-        """后台任务"""
-        while self.running:
-            # 执行任务
-            time.sleep(5)
-    
-    @SCHEDULED(interval=300)
-    def periodic_task(self):
-        """每5分钟执行一次"""
-        print("执行定时任务")
-    
-    @SCHEDULED(at_time="09:00")
-    def daily_task(self):
-        """每天9点执行"""
-        print("执行每日任务")
-    
-    def custom_check(self):
-        """可通过 Redis 动态添加为定时任务的方法"""
-        print("自定义检查")
+def start():
+    """这个函数会被框架调用"""
+    print("我的任务正在执行！")
+    # 在这里写你的业务逻辑
+    # ...
 ```
 
-将服务文件保存到 `services/` 目录，框架会自动发现。
+**重要规则**：
+- `start()` 函数是服务的唯一入口，框架只会调用这个函数
+- `start()` 应该执行完任务后**正常返回**，不要写死循环
+- 如果 `start()` 抛出异常，框架会捕获并记录错误，不会影响框架本身
+
+### 第 2 步：编写配置文件
+
+在 `services/` 目录下创建同名的 YAML 文件：
+
+**定时任务配置** (`services/my_task.yaml`)：
+
+```yaml
+name: my_task
+type: scheduled
+schedule:
+  delay: 0            # 立即执行
+  interval: 300       # 每 5 分钟执行一次
+  repeat: "forever"   # 永久运行
+```
+
+**热键触发配置** (`services/my_task.yaml`)：
+
+```yaml
+name: my_task
+type: hotkey
+hotkey:
+  keys: "ctrl+m"      # 按下 Ctrl+M 时执行
+```
+
+### 第 3 步：启动服务
+
+```bash
+python manage.py create my_task
+```
+
+---
+
+## 使用示例
+
+### 示例 1：每小时清理临时文件
+
+```python
+# services/cleanup.py
+import os
+import glob
+
+def start():
+    temp_dir = "/tmp/myapp"
+    files = glob.glob(os.path.join(temp_dir, "*.tmp"))
+    for f in files:
+        os.remove(f)
+    print(f"已清理 {len(files)} 个临时文件")
+```
+
+```yaml
+# services/cleanup.yaml
+name: cleanup
+type: scheduled
+schedule:
+  delay: 0
+  interval: 3600
+  repeat: "forever"
+```
+
+### 示例 2：按键截图
+
+```python
+# services/screenshot.py
+def start():
+    import subprocess
+    subprocess.run(["scrot", "screenshot.png"])  # Linux 截图工具
+    print("截图已保存")
+```
+
+```yaml
+# services/screenshot.yaml
+name: screenshot
+type: hotkey
+hotkey:
+  keys: "ctrl+shift+s"
+```
+
+---
+
+## 常见问题
+
+### Q: 框架未运行时执行命令会怎样？
+
+会提示：`框架未运行，请先执行 'python manage.py run'`
+
+### Q: 重复启动同一个服务会怎样？
+
+会提示：`服务 'xxx' 已在运行中`，不会重复启动。
+
+### Q: 服务的 start() 执行报错会影响框架吗？
+
+不会。每个服务在独立线程中运行，异常会被捕获并记录到日志，框架本身不受影响。
+
+### Q: 定时任务还没执行完，下一次触发时间到了怎么办？
+
+框架会自动跳过本次执行，等上一次完成后再恢复调度，避免重复执行。
+
+### Q: 如何修改服务配置？
+
+先 `stop` 或 `remove` 服务，修改 YAML 配置文件后重新 `create`。每次 `create` 都会重新读取配置。
+
+### Q: 框架崩溃了怎么办？
+
+删除项目根目录下的 `.qdestiny.lock` 文件，然后重新 `python manage.py run`。
+
+### Q: 热键功能不生效？
+
+确保已安装 `pynput`：`pip install pynput`。在 Linux 下可能需要 root 权限或将用户加入 `input` 组。
+
+---
+
+## 日志
+
+框架运行日志保存在 `logs/qdestiny.log`，同时会输出到启动框架的终端。
+日志文件自动轮转，单个文件最大 5MB，保留 3 个备份。
