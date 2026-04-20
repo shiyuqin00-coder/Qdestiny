@@ -27,12 +27,17 @@
 │  │  │  ServiceRunner │  │  │                                     │
 │  │  │ (service_     │  │  │                                     │
 │  │  │  runner.py)   │  │  │                                     │
-│  │  └──┬─────────┬──┘  │  │                                     │
-│  │     │         │      │  │                                     │
-│  │  ┌──▼──┐  ┌──▼───┐  │  │                                     │
-│  │  │Sched│  │Hotkey│  │  │                                     │
-│  │  │uler │  │Mgr   │  │  │                                     │
-│  │  └─────┘  └──────┘  │  │                                     │
+│  │  └──┬────┬────┬──┘  │  │                                     │
+│  │     │    │    │      │  │                                     │
+│  │  ┌──▼──┐│┌───▼──┐   │  │                                     │
+│  │  │Sched│││Hotkey│   │  │                                     │
+│  │  │uler │││Mgr   │   │  │                                     │
+│  │  └─────┘│└──────┘   │  │                                     │
+│  │         │            │  │                                     │
+│  │  ┌──────▼────────┐   │  │  外部 HTTP 客户端                   │
+│  │  │ RemoteHTTP    │◄──┼──┼─── HTTP (0.0.0.0:8080)             │
+│  │  │ Server        │   │  │                                     │
+│  │  └───────────────┘   │  │                                     │
 │  └─────────────────────┘  │                                     │
 └───────────────────────────┴─────────────────────────────────────┘
 ```
@@ -61,13 +66,15 @@ Qdestiny/
 │   ├── config_loader.py         # YAML 配置加载与验证
 │   ├── scheduler.py             # 定时任务调度引擎
 │   ├── hotkey_manager.py        # 全局热键监听管理器
+│   ├── remote_server.py         # 远程 HTTP 服务器（RESTful API）
 │   └── service_runner.py        # 服务生命周期管理
 │
 ├── services/                    # 用户服务目录
 │   └── <name>.py                # 服务文件（必须含 start() 函数）
 │
 ├── configs/                     # 服务配置目录
-│   └── <name>.yaml              # 对应的 YAML 配置文件
+│   ├── <name>.yaml              # 对应的 YAML 配置文件
+│   └── remote.yaml              # 远程 HTTP 服务配置（端口/认证）
 │
 ├── utils/
 │   └── log.py                   # 日志模块说明
@@ -85,7 +92,7 @@ Qdestiny/
 **职责**：解析命令行参数，决定启动模式。
 
 **工作流程**：
-1. 使用 `argparse` 定义 7 个子命令：`run / create / stop / status / list / remove / exit`
+1. 使用 `argparse` 定义 8 个子命令：`run / create / stop / status / list / remove / remote / exit`
 2. 初始化 `logging` 全局日志（控制台 + 文件轮转）
 3. 如果命令是 `run` → 实例化 `FrameworkServer` 并调用 `start()`，进入主进程模式
 4. 如果是其他命令 → 实例化 `FrameworkClient`，通过 TCP 发送命令到主进程，打印响应
@@ -165,18 +172,21 @@ Qdestiny/
 |-----|---------|--------|
 | `create` | `_cmd_create` → `service_runner.start_service()` | 加载配置 → 导入模块 → 注册到 scheduler 或 hotkey_mgr |
 | `stop` | `_cmd_stop` → `service_runner.stop_service()` | 从子系统注销 → 更新状态 |
-| `status` | `_cmd_status` → `service_runner.get_status()` | 收集框架 + 服务状态 |
+| `status` | `_cmd_status` → `service_runner.get_status()` | 收集框架 + 服务 + 远程状态 |
 | `list` | `_cmd_list` → `service_runner.list_available()` | 扫描 services/ 目录 |
 | `remove` | `_cmd_remove` → `service_runner.remove_service()` | stop + 从注册表删除 |
+| `remote_start` | `_cmd_remote_start` → `RemoteHTTPServer.start()` | 加载远程配置 → 启动 HTTP 服务器 |
+| `remote_stop` | `_cmd_remote_stop` → `RemoteHTTPServer.stop()` | 关闭 HTTP 服务器 |
 | `exit` | `_cmd_exit` → 延迟 0.5s 后 `_running.clear()` | 先发响应，再触发关闭 |
 
 **优雅关闭** (`_shutdown`)：
 ```
 1. 关闭 TCP Server socket
-2. service_runner.stop_all()   → 停止所有运行中的服务
-3. hotkey_mgr.stop()           → 停止热键监听
-4. scheduler.stop()            → 停止调度器
-5. 删除 .qdestiny.lock
+2. 停止远程 HTTP 服务（如果正在运行）
+3. service_runner.stop_all()   → 停止所有运行中的服务
+4. hotkey_mgr.stop()           → 停止热键监听
+5. scheduler.stop()            → 停止调度器
+6. 删除 .qdestiny.lock
 ```
 
 **锁文件安全**：
@@ -203,23 +213,25 @@ Qdestiny/
 4. 接收 JSON 响应 (超时 10 秒)
 
 5. format_response() 格式化输出
-   ├─ create/stop/remove/exit → 单行 [OK]/[ERROR] + 消息
-   ├─ status → 表格式展示框架状态 + 服务列表
+   ├─ create/stop/remove/exit/remote → 单行 [OK]/[ERROR] + 消息
+   ├─ status → 表格式展示框架状态（含远程服务状态） + 服务列表
    └─ list   → 列出可用服务及配置文件状态
 ```
 
 ### 3.5 core/config_loader.py — 配置加载器
 
-**职责**：加载和验证服务 YAML 配置文件。
+**职责**：加载和验证服务 YAML 配置文件及远程服务配置。
 
 **核心函数**：
 
 - `load_service_config(name)` — 读取 `configs/<name>.yaml`，返回 dict
-- `validate_config(config)` — 验证配置合法性，返回 `(bool, error_msg)`
+- `validate_config(config)` — 验证服务配置合法性，返回 `(bool, error_msg)`
 - `service_file_exists(name)` — 检查 `services/<name>.py` 是否存在
 - `list_service_files()` — 扫描 services/ 目录列出所有 .py 文件，并检查 configs/ 目录下是否有对应 .yaml
+- `load_remote_config()` — 读取 `configs/remote.yaml`，文件不存在时返回默认值 `{'port': 8080, 'auth': {}}`
+- `validate_remote_config(config)` — 验证远程配置合法性，返回 `(bool, error_msg)`
 
-**验证规则**：
+**服务配置验证规则**：
 
 | 字段 | 规则 |
 |------|------|
@@ -229,6 +241,15 @@ Qdestiny/
 | `schedule.interval` | >= 0 的数字 |
 | `schedule.repeat` | `"once"` / `"forever"` / 正整数 |
 | `hotkey.keys` | 非空字符串 |
+
+**远程配置验证规则**：
+
+| 字段 | 规则 |
+|------|------|
+| `port` | 1-65535 的整数 |
+| `auth.token` | 若存在，必须为非空字符串 |
+| `auth.username` | 若存在，必须与 password 成对出现，非空字符串 |
+| `auth.password` | 若存在，必须与 username 成对出现，非空字符串 |
 
 ### 3.6 core/scheduler.py — 定时任务调度器 (TaskScheduler)
 
@@ -328,7 +349,64 @@ while running:
 
 **优雅降级**：如果 `pynput` 未安装，`PYNPUT_AVAILABLE = False`，`start()` 只打印警告，不会报错。
 
-### 3.8 core/service_runner.py — 服务运行器 (ServiceRunner)
+### 3.8 core/remote_server.py — 远程 HTTP 服务器 (RemoteHTTPServer)
+
+**职责**：提供 RESTful HTTP API，允许外网客户端远程控制框架中的服务。
+
+**设计原则**：HTTP 服务器不包含业务逻辑，仅作为 `ServiceRunner` 的 HTTP 网关，将 HTTP 请求翻译为相同的服务操作。
+
+**类 `RemoteHTTPServer`**：
+
+生命周期管理类，模式与 `TaskScheduler`、`HotkeyManager` 一致：
+- `__init__(service_runner, config)` — 存储引用
+- `start()` — 创建 `ThreadingHTTPServer` 绑定 `0.0.0.0:port`，启动守护线程
+- `stop()` — 调用 `httpd.shutdown()`，join 线程，关闭 server
+- `is_running()` → bool
+- `get_port()` → int
+
+**类 `RemoteRequestHandler(BaseHTTPRequestHandler)`**：
+
+HTTP 请求处理器，通过 `self.server` 属性访问 `service_runner` 和 `auth_config`。
+
+**请求处理流程**：
+```
+HTTP 请求到达
+  1. _authenticate() → 验证 Authorization 头
+     ├─ 未配置认证 → 放行
+     ├─ Bearer Token → hmac.compare_digest 比对
+     ├─ Basic Auth → base64 解码后比对
+     └─ 验证失败 → 401 + WWW-Authenticate 头
+
+  2. _route() → URL 路径匹配
+     ├─ GET  /api/services           → 列出已注册服务状态
+     ├─ GET  /api/services/available → 列出所有可用服务
+     ├─ GET  /api/services/<name>    → 查看指定服务状态
+     ├─ POST /api/services/<name>/start → 启动服务
+     ├─ POST /api/services/<name>/stop  → 停止服务
+     └─ 无匹配 → 404
+
+  3. 调用对应的 ServiceRunner 方法
+
+  4. _send_json() → 返回 JSON 响应
+```
+
+**认证机制**：
+- 支持 Token（Bearer）和 Basic Auth 两种方式
+- 两种方式满足其一即通过
+- 使用 `hmac.compare_digest()` 防止时序攻击
+- 未配置认证时所有请求放行（启动时输出 WARNING 日志）
+
+**安全措施**：
+- 服务名必须匹配 `^[a-zA-Z0-9_]+$`，防止路径注入
+- 内部异常不泄露堆栈，统一返回 500 通用错误信息
+- 启动时警告用户 HTTP 绑定到所有网络接口
+
+**响应格式**（与 TCP 协议一致）：
+```json
+{"status": "ok|error", "message": "...", "data": {...}}
+```
+
+### 3.9 core/service_runner.py — 服务运行器 (ServiceRunner)
 
 **职责**：服务生命周期的中枢，衔接配置系统与执行子系统（调度器/热键管理器）。
 
@@ -441,6 +519,10 @@ TCP 服务线程 (TCPServer)
 热键监听线程 (pynput Listener)
   └─ 系统级键盘 hook 循环
       └─ 回调线程 (Hotkey-xxx)      # 触发时创建，执行 start() 后销毁
+
+远程 HTTP 线程 (RemoteHTTP)           # 仅在 remote start 后存在
+  └─ ThreadingHTTPServer.serve_forever()
+      └─ 请求处理线程               # 每个 HTTP 请求一个线程，处理完即销毁
 ```
 
 所有非主线程均为 `daemon=True`，主线程退出时自动终止。
@@ -505,4 +587,7 @@ TCP 服务线程 (TCPServer)
 | 模块导入失败 | 捕获 ImportError，返回友好提示 |
 | 框架异常退出 | atexit 兜底清理锁文件 |
 | pynput 未安装 | 优雅降级，热键功能不可用但框架正常运行 |
-| 端口被占用 | 自动分配随机端口，写入锁文件 |
+| 端口被占用 | TCP 自动分配随机端口；HTTP 远程服务明确报错（用户需知道端口） |
+| 远程 HTTP 请求处理异常 | 捕获异常，返回 500 通用错误，不泄露堆栈信息 |
+| 远程认证失败 | 返回 401 状态码 + WWW-Authenticate 头 |
+| 远程配置缺失 | 使用默认值（port 8080，无认证），功能仍可用 |

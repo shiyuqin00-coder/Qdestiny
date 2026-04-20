@@ -69,7 +69,7 @@ def format_response(response: dict, cmd: str):
         print(f"[ERROR] {message}")
         return
 
-    if cmd in ('create', 'stop', 'remove', 'exit'):
+    if cmd in ('create', 'stop', 'remove', 'exit', 'remote'):
         print(f"[OK] {message}")
 
     elif cmd == 'status':
@@ -78,6 +78,11 @@ def format_response(response: dict, cmd: str):
         print(f"  PID:    {fw.get('pid', 'N/A')}")
         print(f"  端口:   {fw.get('port', 'N/A')}")
         print(f"  运行:   {fw.get('uptime', 'N/A')}")
+        remote = fw.get('remote', {})
+        if remote.get('enabled'):
+            print(f"  远程:   [ON] 端口 {remote.get('port', 'N/A')}")
+        else:
+            print(f"  远程:   [OFF]")
         print()
         services = data.get('services', {})
         if not services:

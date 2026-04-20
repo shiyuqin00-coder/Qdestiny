@@ -1,7 +1,7 @@
 # Qdestiny 服务框架 - 使用手册
 
 Qdestiny 是一个轻量级的 Python 后台服务框架，可以将 Python 脚本挂在后台运行。
-支持**定时任务**和**全局热键触发**两种运行模式，无需任何外部数据库，开箱即用。
+支持**定时任务**、**全局热键触发**和**远程 HTTP 触发**三种运行模式，无需任何外部数据库，开箱即用。
 
 ---
 
@@ -60,6 +60,7 @@ python manage.py status
   PID:    12345
   端口:   19527
   运行:   30s
+  远程:   [OFF]
 
 --- 服务列表 (1 个) ---
   [RUN] test                 类型: scheduled    执行: 2次  启动于: 2026-04-05 16:35:06
@@ -79,6 +80,8 @@ python manage.py status
 | `status` | 查看框架和所有服务的运行状态 | `python manage.py status` |
 | `list` | 列出 services/ 目录下所有可用的服务 | `python manage.py list` |
 | `remove <名称>` | 从框架中移除已注册的服务 | `python manage.py remove test` |
+| `remote start` | 启动远程 HTTP 服务 | `python manage.py remote start` |
+| `remote stop` | 停止远程 HTTP 服务 | `python manage.py remote stop` |
 | `exit` | 退出框架（会自动停止所有服务） | `python manage.py exit` |
 
 **stop 和 remove 的区别**：`stop` 停止服务但保留注册信息（可以查到状态），`remove` 彻底从框架中删除。
@@ -87,7 +90,7 @@ python manage.py status
 
 ## 服务类型
 
-Qdestiny 支持两种服务类型，通过 YAML 配置文件指定。
+Qdestiny 支持两种服务类型，通过 YAML 配置文件指定。此外还支持远程 HTTP 触发模式，可从外网控制服务。
 
 ### 类型一：定时任务（scheduled）
 
@@ -136,6 +139,79 @@ hotkey:
 **示例组合**：`"ctrl+shift+m"`, `"a+d"`, `"alt+1"`
 
 > 注意：热键是**全局**的，即使框架的终端窗口不在前台也能响应。
+
+### 远程 HTTP 触发（remote）
+
+通过 HTTP API 从外网远程控制框架中的服务。框架启动时远程服务默认**关闭**，需手动开启。
+
+#### 开启远程服务
+
+```bash
+python manage.py remote start
+```
+
+#### 配置文件
+
+编辑 `configs/remote.yaml` 设置端口和认证方式：
+
+```yaml
+port: 8080
+
+auth:
+  # Token 认证：请求头 Authorization: Bearer <token>
+  token: "your-secret-token-here"
+  # Basic Auth：请求头 Authorization: Basic base64(user:pass)
+  username: "admin"
+  password: "your-password-here"
+```
+
+> 安全提示：远程服务监听所有网络接口（0.0.0.0），务必配置认证信息，或使用防火墙/VPN 保护。
+
+#### API 接口
+
+| 方法 | 路径 | 功能 |
+|------|------|------|
+| GET | `/api/services` | 查看所有已注册服务的状态 |
+| GET | `/api/services/available` | 列出所有可用服务（等同于 `list` 命令） |
+| GET | `/api/services/<名称>` | 查看指定服务的详细状态 |
+| POST | `/api/services/<名称>/start` | 远程启动一个服务 |
+| POST | `/api/services/<名称>/stop` | 远程停止一个服务 |
+
+#### 认证方式
+
+**Token 认证**：
+```bash
+curl -H "Authorization: Bearer your-secret-token-here" http://<IP>:8080/api/services/available
+```
+
+**Basic Auth 认证**：
+```bash
+curl -u admin:your-password-here http://<IP>:8080/api/services/available
+```
+
+#### 使用示例
+
+```bash
+# 从外网启动定时邮件服务
+curl -X POST -H "Authorization: Bearer your-secret-token-here" \
+  http://your-server:8080/api/services/email_task/start
+
+# 查看服务运行状态
+curl -H "Authorization: Bearer your-secret-token-here" \
+  http://your-server:8080/api/services
+
+# 停止服务
+curl -X POST -H "Authorization: Bearer your-secret-token-here" \
+  http://your-server:8080/api/services/email_task/stop
+```
+
+#### 关闭远程服务
+
+```bash
+python manage.py remote stop
+```
+
+修改配置后需要先 `remote stop` 再 `remote start` 重新加载。
 
 ---
 
@@ -270,6 +346,20 @@ hotkey:
 ### Q: 热键功能不生效？
 
 确保已安装 `pynput`：`pip install pynput`。在 Linux 下可能需要 root 权限或将用户加入 `input` 组。
+
+### Q: 远程 API 返回 "认证失败"？
+
+请确保请求头中携带了正确的认证信息。支持两种方式：
+- Token：`Authorization: Bearer <token>`（token 在 `configs/remote.yaml` 的 `auth.token` 中配置）
+- Basic Auth：`Authorization: Basic base64(user:pass)`（或使用 curl 的 `-u user:pass` 参数）
+
+### Q: `/api/services` 返回为空，但 `/api/services/available` 有数据？
+
+`/api/services` 只显示已启动（create）的服务，`/api/services/available` 显示 services/ 目录下所有可用的服务文件。需要先通过 POST 请求启动服务，才能在 `/api/services` 中看到。
+
+### Q: 远程服务端口被占用？
+
+修改 `configs/remote.yaml` 中的 `port` 字段为其他可用端口，然后重新 `remote start`。
 
 ---
 

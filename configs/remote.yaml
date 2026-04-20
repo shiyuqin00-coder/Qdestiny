@@ -1,0 +1,11 @@
+# 远程 HTTP 服务配置
+port: 8080
+
+# 认证配置（至少配置一种，否则任何人均可访问）
+auth:
+  # Token 认证：请求头 Authorization: Bearer <token>
+  token: "your-secret-token-here"
+
+  # Basic Auth 认证：请求头 Authorization: Basic base64(user:pass)
+  username: "admin"
+  password: "your-password-here"

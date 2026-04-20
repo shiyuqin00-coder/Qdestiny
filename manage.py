@@ -66,6 +66,10 @@ def main():
     # exit
     subparsers.add_parser('exit', help='退出框架')
 
+    # remote
+    p_remote = subparsers.add_parser('remote', help='远程 HTTP 服务管理')
+    p_remote.add_argument('action', choices=['start', 'stop'], help='启动或停止远程HTTP服务')
+
     args = parser.parse_args()
 
     if not args.command:
@@ -84,11 +88,17 @@ def main():
         from core.client import FrameworkClient, format_response
         client = FrameworkClient()
 
-        cmd_args = {}
-        if hasattr(args, 'service'):
-            cmd_args['service'] = args.service
+        # 构建要发送的命令和参数
+        if args.command == 'remote':
+            cmd_to_send = f'remote_{args.action}'
+            cmd_args = {}
+        else:
+            cmd_to_send = args.command
+            cmd_args = {}
+            if hasattr(args, 'service'):
+                cmd_args['service'] = args.service
 
-        response = client.send_command(args.command, cmd_args)
+        response = client.send_command(cmd_to_send, cmd_args)
         format_response(response, args.command)
 
 

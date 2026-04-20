@@ -1,3 +1,5 @@
 psutil>=5.9.0
 pynput>=1.7.0
 pyyaml>=6.0
+
+# 远程 HTTP 服务使用 Python 内置 http.server 模块，无需额外依赖

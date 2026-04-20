@@ -21,6 +21,8 @@ from core.protocol import (
 from core.scheduler import TaskScheduler
 from core.hotkey_manager import HotkeyManager
 from core.service_runner import ServiceRunner
+from core.config_loader import load_remote_config, validate_remote_config
+from core.remote_server import RemoteHTTPServer
 
 log = logging.getLogger('Qdestiny')
 
@@ -33,6 +35,7 @@ class FrameworkServer:
         self._scheduler = TaskScheduler()
         self._hotkey_mgr = HotkeyManager()
         self._runner = ServiceRunner(self._scheduler, self._hotkey_mgr)
+        self._remote_server = None
         self._tcp_server = None
         self._running = threading.Event()
         self._port = DEFAULT_PORT
@@ -197,6 +200,8 @@ class FrameworkServer:
             'list': self._cmd_list,
             'remove': self._cmd_remove,
             'exit': self._cmd_exit,
+            'remote_start': self._cmd_remote_start,
+            'remote_stop': self._cmd_remote_stop,
         }
         handler = handlers.get(cmd)
         if not handler:
@@ -222,10 +227,14 @@ class FrameworkServer:
     def _cmd_status(self, args: dict) -> bytes:
         service_name = args.get('service')
         services = self._runner.get_status(service_name)
+        remote_info = {'enabled': False}
+        if self._remote_server and self._remote_server.is_running():
+            remote_info = {'enabled': True, 'port': self._remote_server.get_port()}
         framework = {
             'pid': os.getpid(),
             'port': self._port,
             'uptime': f"{time.time() - os.path.getmtime(str(LOCK_FILE)):.0f}s" if LOCK_FILE.exists() else 'N/A',
+            'remote': remote_info,
         }
         return encode_response('ok', data={'framework': framework, 'services': services})
 
@@ -247,6 +256,34 @@ class FrameworkServer:
         threading.Thread(target=self._delayed_exit, daemon=True).start()
         return encode_response('ok', message='框架即将关闭')
 
+    def _cmd_remote_start(self, args: dict) -> bytes:
+        """启动远程 HTTP 服务"""
+        if self._remote_server and self._remote_server.is_running():
+            return encode_response('error', message='远程HTTP服务已在运行中')
+        try:
+            config = load_remote_config()
+            ok, err = validate_remote_config(config)
+            if not ok:
+                return encode_response('error', message=f'远程配置无效: {err}')
+            self._remote_server = RemoteHTTPServer(self._runner, config)
+            self._remote_server.start()
+            port = config.get('port', 8080)
+            return encode_response('ok', message=f'远程HTTP服务已启动 (端口: {port})')
+        except OSError as e:
+            self._remote_server = None
+            return encode_response('error', message=f'远程HTTP服务启动失败: {e}')
+        except Exception as e:
+            self._remote_server = None
+            return encode_response('error', message=f'远程HTTP服务启动失败: {e}')
+
+    def _cmd_remote_stop(self, args: dict) -> bytes:
+        """停止远程 HTTP 服务"""
+        if not self._remote_server or not self._remote_server.is_running():
+            return encode_response('error', message='远程HTTP服务未在运行')
+        self._remote_server.stop()
+        self._remote_server = None
+        return encode_response('ok', message='远程HTTP服务已停止')
+
     def _delayed_exit(self):
         time.sleep(0.5)
         self._running.clear()
@@ -260,6 +297,10 @@ class FrameworkServer:
                 self._tcp_server.close()
             except Exception:
                 pass
+
+        # 停止远程 HTTP 服务
+        if self._remote_server and self._remote_server.is_running():
+            self._remote_server.stop()
 
         # 停止所有服务
         self._runner.stop_all()

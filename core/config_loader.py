@@ -73,6 +73,49 @@ def service_file_exists(service_name: str) -> bool:
     return (SERVICES_DIR / f'{service_name}.py').exists()
 
 
+def load_remote_config() -> dict:
+    """加载远程 HTTP 服务配置"""
+    config_path = CONFIGS_DIR / 'remote.yaml'
+    if not config_path.exists():
+        return {'port': 8080, 'auth': {}}
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        if not config:
+            return {'port': 8080, 'auth': {}}
+        return config
+    except yaml.YAMLError as e:
+        raise ValueError(f"远程配置文件解析失败: {e}")
+
+
+def validate_remote_config(config: dict) -> Tuple[bool, str]:
+    """
+    验证远程服务配置合法性
+    返回 (是否合法, 错误信息)
+    """
+    port = config.get('port', 8080)
+    if not isinstance(port, int) or port < 1 or port > 65535:
+        return False, f"port 必须为 1-65535 的整数，当前值: {port}"
+
+    auth = config.get('auth', {})
+    if not isinstance(auth, dict):
+        return False, "auth 必须为字典类型"
+
+    token = auth.get('token')
+    if token is not None and (not isinstance(token, str) or not token.strip()):
+        return False, "auth.token 必须为非空字符串"
+
+    username = auth.get('username')
+    password = auth.get('password')
+    if username is not None or password is not None:
+        if not (isinstance(username, str) and username.strip()):
+            return False, "auth.username 必须为非空字符串"
+        if not (isinstance(password, str) and password.strip()):
+            return False, "auth.password 必须为非空字符串"
+
+    return True, ''
+
+
 def list_service_files() -> list:
     """列出 services 目录下所有可用的服务"""
     result = []
