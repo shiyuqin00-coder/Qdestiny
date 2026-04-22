@@ -194,7 +194,7 @@ curl -u admin:your-password-here http://<IP>:8080/api/services/available
 ```bash
 # 从外网启动定时邮件服务
 curl -X POST -H "Authorization: Bearer your-secret-token-here" \
-  http://your-server:8080/api/services/email_task/start
+  http://your-server:8080/api/services/daily_email/start
 
 # 查看服务运行状态
 curl -H "Authorization: Bearer your-secret-token-here" \
@@ -297,7 +297,42 @@ schedule:
   repeat: "forever"
 ```
 
-### 示例 2：按键截图
+### 示例 2：每日定时发送邮件
+
+扫描指定文件夹下所有文件（文本、图片、视频等），以附件形式定时发送邮件。
+
+```python
+# services/daily_email.py（框架内置示例，已提供完整实现）
+# 功能：读取邮件配置 → 扫描指定目录 → 将所有文件作为附件发送
+# 支持任意 SMTP 服务商、中文附件名、SSL/STARTTLS
+```
+
+```yaml
+# configs/daily_email.yaml
+name: daily_email
+type: scheduled
+schedule:
+  delay: 0            # 启动后立即执行
+  interval: 86400     # 每 24 小时执行一次
+  repeat: "forever"
+
+email:
+  smtp:
+    host: "smtp.qq.com"       # SMTP 服务器（QQ/163/Gmail/Outlook 等均可）
+    port: 465
+    use_ssl: true
+  sender: "your-email@qq.com"
+  password: "your-smtp-auth-code"   # SMTP 授权码，非邮箱登录密码
+  recipients:
+    - "recipient@example.com"
+  subject: "每日报告 - {date}"       # {date} 自动替换为当天日期
+  body: "以下为 {date} 的附件内容，共 {count} 个文件，请查收。"
+  content_dir: "D:/path/to/your/folder"   # 此目录下所有文件将作为附件
+```
+
+> 注意：QQ 邮箱需使用授权码而非登录密码。获取方式：QQ邮箱 → 设置 → 账户 → POP3/SMTP服务 → 开启并获取授权码。配置文件中包含完整的 QQ/163/Gmail/Outlook SMTP 参考。
+
+### 示例 3：按键截图
 
 ```python
 # services/screenshot.py
