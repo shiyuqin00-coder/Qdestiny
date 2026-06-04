@@ -1,3 +1,25 @@
+# 日志和运行时数据
 logs/
+data/
+
+# 配置文件
 configs/
+services/*/config.yaml
+
+# Python
 __pycache__/
+*.pyc
+*.pyo
+
+# 临时脚本
+test_*.py
+_*.py
+
+# Windows
+nul
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

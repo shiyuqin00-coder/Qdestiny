@@ -12,7 +12,7 @@ CONFIGS_DIR = Path(__file__).parent.parent / 'configs'
 
 def load_service_config(service_name: str) -> dict:
     """加载服务配置文件"""
-    config_path = CONFIGS_DIR / f'{service_name}.yaml'
+    config_path = SERVICES_DIR / service_name / 'config.yaml'
     if not config_path.exists():
         raise FileNotFoundError(f"配置文件不存在: {config_path}")
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -69,8 +69,8 @@ def validate_config(config: dict) -> Tuple[bool, str]:
 
 
 def service_file_exists(service_name: str) -> bool:
-    """检查服务 Python 文件是否存在"""
-    return (SERVICES_DIR / f'{service_name}.py').exists()
+    """检查服务目录及入口文件是否存在"""
+    return (SERVICES_DIR / service_name / 'main.py').exists()
 
 
 def load_remote_config() -> dict:
@@ -121,10 +121,12 @@ def list_service_files() -> list:
     result = []
     if not SERVICES_DIR.exists():
         return result
-    for py_file in sorted(SERVICES_DIR.glob('*.py')):
-        if py_file.name.startswith('__'):
+    for subdir in sorted(SERVICES_DIR.iterdir()):
+        if not subdir.is_dir() or subdir.name.startswith('__'):
             continue
-        name = py_file.stem
-        has_config = (CONFIGS_DIR / f'{name}.yaml').exists()
+        if not (subdir / 'main.py').exists():
+            continue
+        name = subdir.name
+        has_config = (subdir / 'config.yaml').exists()
         result.append({'name': name, 'has_config': has_config})
     return result

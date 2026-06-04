@@ -62,7 +62,7 @@ class ServiceRunner:
 
         # 检查文件
         if not service_file_exists(service_name):
-            return False, f"服务文件不存在: services/{service_name}.py"
+            return False, f"服务文件不存在: services/{service_name}/main.py"
 
         # 加载配置
         try:
@@ -75,7 +75,7 @@ class ServiceRunner:
             return False, f"配置验证失败: {err}"
 
         # 动态导入模块
-        module_path = f'services.{service_name}'
+        module_path = f'services.{service_name}.main'
         try:
             if module_path in sys.modules:
                 module = importlib.reload(sys.modules[module_path])
@@ -86,7 +86,7 @@ class ServiceRunner:
 
         # 检查 start() 函数
         if not hasattr(module, 'start') or not callable(module.start):
-            return False, f"服务文件 services/{service_name}.py 缺少 start() 函数"
+            return False, f"服务文件 services/{service_name}/main.py 缺少 start() 函数"
 
         # 创建服务信息
         svc = ServiceInfo(service_name, config)

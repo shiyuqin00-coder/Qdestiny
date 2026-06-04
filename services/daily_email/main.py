@@ -19,7 +19,7 @@ import yaml
 
 log = logging.getLogger('Qdestiny')
 
-CONFIG_PATH = Path(__file__).parent.parent / 'configs' / 'daily_email.yaml'
+CONFIG_PATH = Path(__file__).parent / 'config.yaml'
 
 
 def _load_email_config() -> dict:

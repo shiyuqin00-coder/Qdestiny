@@ -24,13 +24,20 @@ def setup_logging(level='INFO'):
             '%(asctime)s [%(levelname)s] %(message)s', datefmt='%H:%M:%S'
         ))
         logger.addHandler(ch)
-        # 文件
+        # 文件：按日期分割，每天一个新文件
         log_dir = PROJECT_ROOT / 'logs'
         log_dir.mkdir(exist_ok=True)
-        from logging.handlers import RotatingFileHandler
-        fh = RotatingFileHandler(
-            log_dir / 'qdestiny.log', maxBytes=5*1024*1024, backupCount=3, encoding='utf-8'
+        from logging.handlers import TimedRotatingFileHandler
+        fh = TimedRotatingFileHandler(
+            log_dir / 'qdestiny.log',
+            when='midnight',
+            interval=1,
+            backupCount=30,
+            encoding='utf-8',
         )
+        # 自定义滚动文件命名: qdestiny_2026-06-03.log
+        fh.namer = lambda name: str(log_dir / f"qdestiny_{name.rsplit('.', 1)[-1]}.log")
+        fh.rotator = None
         fh.setFormatter(logging.Formatter(
             '%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
         ))
@@ -43,11 +50,13 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='可用命令')
 
     # run
-    subparsers.add_parser('run', help='启动框架主进程')
+    p_run = subparsers.add_parser('run', help='启动框架主进程')
+    p_run.add_argument('--no-sleep', action='store_true',
+                       help='阻止系统进入睡眠/休眠模式（Windows 有效）')
 
     # create
     p_create = subparsers.add_parser('create', help='启动一个服务')
-    p_create.add_argument('service', help='服务名称（services/ 目录下的文件名，不含 .py）')
+    p_create.add_argument('service', help='服务名称（services/ 目录下的子目录名）')
 
     # stop
     p_stop = subparsers.add_parser('stop', help='停止一个服务')
@@ -81,6 +90,8 @@ def main():
         setup_logging('DEBUG')
         from core.server import FrameworkServer
         server = FrameworkServer()
+        if getattr(args, 'no_sleep', False):
+            server.set_prevent_sleep(True)
         server.start()
     else:
         # 客户端模式：发送命令到主进程

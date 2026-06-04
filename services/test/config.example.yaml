@@ -1,4 +1,5 @@
-# test 服务配置
+# test 服务配置（示例）
+# 使用方式：复制本文件为 config.yaml
 name: test
 type: scheduled
 schedule:

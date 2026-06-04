@@ -104,7 +104,7 @@ def format_response(response: dict, cmd: str):
     elif cmd == 'list':
         services = data.get('services', [])
         if not services:
-            print("services/ 目录下没有找到服务文件")
+            print("services/ 目录下没有找到服务模块")
         else:
             print(f"--- 可用服务 ({len(services)} 个) ---")
             for svc in services:

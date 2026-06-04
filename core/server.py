@@ -3,6 +3,7 @@
 TCP Server + 命令分发 + 生命周期管理
 """
 import atexit
+import ctypes
 import json
 import os
 import signal
@@ -31,6 +32,11 @@ LOCK_FILE = PROJECT_ROOT / LOCK_FILE_NAME
 
 
 class FrameworkServer:
+    # Windows API 常量：阻止系统休眠
+    _ES_CONTINUOUS = 0x80000000
+    _ES_SYSTEM_REQUIRED = 0x00000001
+    _ES_DISPLAY_REQUIRED = 0x00000002
+
     def __init__(self):
         self._scheduler = TaskScheduler()
         self._hotkey_mgr = HotkeyManager()
@@ -39,6 +45,33 @@ class FrameworkServer:
         self._tcp_server = None
         self._running = threading.Event()
         self._port = DEFAULT_PORT
+        self._prevent_sleep = False
+
+    def set_prevent_sleep(self, enabled: bool = True):
+        """设置是否阻止系统进入睡眠/休眠"""
+        self._prevent_sleep = enabled
+
+    def _apply_sleep_prevention(self):
+        """调用 Windows API 阻止系统休眠"""
+        if sys.platform != 'win32' or not self._prevent_sleep:
+            return
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(
+                self._ES_CONTINUOUS | self._ES_SYSTEM_REQUIRED | self._ES_DISPLAY_REQUIRED
+            )
+            log.info("已启用防休眠：系统将保持运行状态")
+        except Exception as e:
+            log.warning(f"设置防休眠失败: {e}")
+
+    def _release_sleep_prevention(self):
+        """解除系统休眠阻止"""
+        if sys.platform != 'win32' or not self._prevent_sleep:
+            return
+        try:
+            ctypes.windll.kernel32.SetThreadExecutionState(self._ES_CONTINUOUS)
+            log.info("已解除防休眠：系统可正常进入睡眠")
+        except Exception as e:
+            log.warning(f"解除防休眠失败: {e}")
 
     def start(self):
         """启动框架"""
@@ -81,6 +114,9 @@ class FrameworkServer:
         # 启动 TCP 接收线程
         tcp_thread = threading.Thread(target=self._tcp_loop, daemon=True, name='TCPServer')
         tcp_thread.start()
+
+        # 启用防休眠（如果设置）
+        self._apply_sleep_prevention()
 
         log.info(f"Qdestiny 框架已启动 (PID: {os.getpid()}, 端口: {self._port})")
         log.info("按 Ctrl+C 或执行 'python manage.py exit' 退出")
@@ -291,6 +327,10 @@ class FrameworkServer:
     def _shutdown(self):
         """优雅关闭"""
         log.info("正在关闭框架...")
+
+        # 解除防休眠
+        self._release_sleep_prevention()
+
         # 停止 TCP
         if self._tcp_server:
             try:

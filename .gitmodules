@@ -1,0 +1,3 @@
+[submodule "services/crypto_sim"]
+	path = services/crypto_sim
+	url = https://github.com/shiyuqin00-coder/crypto_sim.git

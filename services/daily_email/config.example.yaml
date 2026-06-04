@@ -1,0 +1,56 @@
+# 每日定时邮件服务配置（示例）
+# 使用方式：复制本文件为 config.yaml 并填入真实配置
+name: daily_email
+type: scheduled
+schedule:
+  delay: 60            # 启动后立即执行第一次
+  interval: 86400     # 每 86400 秒（24 小时）执行一次
+  repeat: "forever"   # 永久循环
+
+# ===== 邮件配置（请根据实际情况修改） =====
+email:
+  # SMTP 服务器设置
+  smtp:
+    host: "smtp.qq.com"       # SMTP 服务器地址（QQ/163/Gmail/Outlook 等）
+    port: 465                 # 端口号（SSL 通常 465，STARTTLS 通常 587）
+    use_ssl: true             # true 使用 SSL 直连，false 使用 STARTTLS
+
+  # 发件人信息
+  sender: "your_email@qq.com"           # ← 替换为发件邮箱地址
+  password: "YOUR_SMTP_AUTH_CODE"       # ← 替换为 SMTP 授权码（非邮箱登录密码）
+
+  # 收件人列表
+  recipients:
+    - "recipient@example.com"           # ← 替换为收件人邮箱
+
+  # 邮件内容
+  subject: "每日报告 - {date}"                              # 邮件主题
+  body: "以下为 {date} 的附件内容，共 {count} 个文件，请查收。"  # 正文
+
+  # 附件来源目录（该目录下所有文件都会作为附件发送）
+  content_dir: "D:/Desktop/a"
+
+# ===== 常见邮箱 SMTP 配置参考 =====
+#
+# QQ 邮箱：
+#   host: "smtp.qq.com"
+#   port: 465
+#   use_ssl: true
+#   授权码获取：QQ邮箱 → 设置 → 账户 → POP3/SMTP服务 → 开启并获取授权码
+#
+# 163 邮箱：
+#   host: "smtp.163.com"
+#   port: 465
+#   use_ssl: true
+#   授权码获取：163邮箱 → 设置 → POP3/SMTP/IMAP → 开启并设置授权密码
+#
+# Gmail：
+#   host: "smtp.gmail.com"
+#   port: 587
+#   use_ssl: false    （Gmail 使用 STARTTLS）
+#   密码：需使用应用专用密码（Google 账户 → 安全性 → 应用专用密码）
+#
+# Outlook / Hotmail：
+#   host: "smtp.office365.com"
+#   port: 587
+#   use_ssl: false    （Outlook 使用 STARTTLS）
