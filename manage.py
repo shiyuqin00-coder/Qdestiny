@@ -51,8 +51,8 @@ def main():
 
     # run
     p_run = subparsers.add_parser('run', help='启动框架主进程')
-    p_run.add_argument('--no-sleep', action='store_true',
-                       help='阻止系统进入睡眠/休眠模式（Windows 有效）')
+    p_run.add_argument('--keep-display', action='store_true',
+                       help='阻止屏幕熄灭（默认仅阻止系统休眠，不阻止息屏，Windows 有效）')
 
     # create
     p_create = subparsers.add_parser('create', help='启动一个服务')
@@ -90,8 +90,8 @@ def main():
         setup_logging('DEBUG')
         from core.server import FrameworkServer
         server = FrameworkServer()
-        if getattr(args, 'no_sleep', False):
-            server.set_prevent_sleep(True)
+        if getattr(args, 'keep_display', False):
+            server.set_prevent_sleep(True, keep_display=True)
         server.start()
     else:
         # 客户端模式：发送命令到主进程

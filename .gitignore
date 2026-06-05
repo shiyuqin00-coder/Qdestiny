@@ -1,6 +1,7 @@
 # 日志和运行时数据
 logs/
 data/
+.qdestiny.lock
 
 # 配置文件
 configs/

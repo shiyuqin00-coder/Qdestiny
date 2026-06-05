@@ -45,21 +45,27 @@ class FrameworkServer:
         self._tcp_server = None
         self._running = threading.Event()
         self._port = DEFAULT_PORT
-        self._prevent_sleep = False
+        self._prevent_sleep = True
+        self._keep_display = False
 
-    def set_prevent_sleep(self, enabled: bool = True):
+    def set_prevent_sleep(self, enabled: bool = True, keep_display: bool = False):
         """设置是否阻止系统进入睡眠/休眠"""
         self._prevent_sleep = enabled
+        self._keep_display = keep_display
 
     def _apply_sleep_prevention(self):
         """调用 Windows API 阻止系统休眠"""
         if sys.platform != 'win32' or not self._prevent_sleep:
             return
         try:
-            ctypes.windll.kernel32.SetThreadExecutionState(
-                self._ES_CONTINUOUS | self._ES_SYSTEM_REQUIRED | self._ES_DISPLAY_REQUIRED
-            )
-            log.info("已启用防休眠：系统将保持运行状态")
+            flags = self._ES_CONTINUOUS | self._ES_SYSTEM_REQUIRED
+            if self._keep_display:
+                flags |= self._ES_DISPLAY_REQUIRED
+            ctypes.windll.kernel32.SetThreadExecutionState(flags)
+            if self._keep_display:
+                log.info("已启用防休眠：系统保持运行，屏幕常亮")
+            else:
+                log.info("已启用防休眠：系统保持运行，屏幕可自动熄灭")
         except Exception as e:
             log.warning(f"设置防休眠失败: {e}")
 
