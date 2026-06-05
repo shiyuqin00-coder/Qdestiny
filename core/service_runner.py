@@ -74,13 +74,17 @@ class ServiceRunner:
         if not ok:
             return False, f"配置验证失败: {err}"
 
-        # 动态导入模块
+        # 动态导入模块（清除所有子模块缓存，确保配置热更新）
         module_path = f'services.{service_name}.main'
         try:
             if module_path in sys.modules:
-                module = importlib.reload(sys.modules[module_path])
-            else:
-                module = importlib.import_module(module_path)
+                # 清除该服务所有子模块的缓存，避免模块级单例残留旧配置
+                prefix = f'services.{service_name}.'
+                to_remove = [key for key in sys.modules
+                             if key == module_path or key.startswith(prefix)]
+                for key in to_remove:
+                    del sys.modules[key]
+            module = importlib.import_module(module_path)
         except Exception as e:
             return False, f"导入模块失败: {e}"
 
